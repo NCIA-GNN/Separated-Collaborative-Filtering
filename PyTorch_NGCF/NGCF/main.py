@@ -291,7 +291,7 @@ if __name__ == '__main__':
     
 
     
-    plain_adj, norm_adj, mean_adj= data_generator.get_adj_mat(scc=args.scc, create=args.create)  ## clustered sample
+    plain_adj, norm_adj, mean_adj= data_generator.get_adj_mat(scc=args.scc, create=args.create, N=args.N, cl_num = args.cl_num)  ## clustered sample
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
     

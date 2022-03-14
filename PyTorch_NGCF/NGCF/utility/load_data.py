@@ -82,7 +82,7 @@ class Data(object):
                     uid, test_items = items[0], items[1:]
                     self.test_set[uid] = test_items
 
-    def get_adj_mat(self, scc=0, create=0):
+    def get_adj_mat(self, scc=0, create=0, N=5, cl_num=0):
         t1 = time()
         if create ==1:
             adj_mat, norm_adj_mat, mean_adj_mat, R = self.create_adj_mat()
@@ -97,7 +97,7 @@ class Data(object):
             R = sp.load_npz(self.path + '/s_incd_mat.npz')
             
             # Clustering
-            N = 5
+#             N = 5
             
             bicl = SpectralCoclustering(n_clusters=N, random_state=0)
             bicl.fit(R)
@@ -105,7 +105,7 @@ class Data(object):
             print('Column (Item) cluster counts:', np.unique(bicl.column_labels_, return_counts=True)[1])
             
             # Select first cluster
-            sample_cluster_num = 4
+            sample_cluster_num = cl_num
             row_idx, col_idx = np.argsort(bicl.row_labels_), np.argsort(bicl.column_labels_)
             sorted_row = sorted(bicl.row_labels_)
             chenge_points_row= []

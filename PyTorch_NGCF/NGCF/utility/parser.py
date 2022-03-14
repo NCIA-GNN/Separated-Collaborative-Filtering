@@ -60,5 +60,9 @@ def parse_args():
                         help='Spectral CC Sampling. 0 : scc , 1 : original')
     parser.add_argument('--create', type=int, default=0,
                         help='create adj matrix. 0 : No , 1 : Create')
+    parser.add_argument('--N', type=int, default=5,
+                        help='the number of cluster')
+    parser.add_argument('--cl_num', type=int, default=0,
+                        help='select cluster')
 
     return parser.parse_args()
