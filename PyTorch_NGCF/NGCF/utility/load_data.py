@@ -116,7 +116,7 @@ class Data(object):
                     chenge_points_row.append(i+1)
             
             # Get new incidence matrix from user listbelongs to first cluster (ignore clustered items)
-            if sample_cluster_num ==4 : 
+            if sample_cluster_num == (N-1) : 
                 sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:]) 
             else : 
                 sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
