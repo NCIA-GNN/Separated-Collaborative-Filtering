@@ -105,7 +105,7 @@ class Data(object):
             print('Column (Item) cluster counts:', np.unique(bicl.column_labels_, return_counts=True)[1])
             
             # Select first cluster
-            sample_cluster_num = 0
+            sample_cluster_num = 4
             row_idx, col_idx = np.argsort(bicl.row_labels_), np.argsort(bicl.column_labels_)
             sorted_row = sorted(bicl.row_labels_)
             chenge_points_row= []
@@ -116,7 +116,10 @@ class Data(object):
                     chenge_points_row.append(i+1)
             
             # Get new incidence matrix from user listbelongs to first cluster (ignore clustered items)
-            sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
+            if sample_cluster_num ==4 : 
+                sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:]) 
+            else : 
+                sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
             item_list = []            
             for u in sample_row_idx:
                 for i in self.train_items[u]:
