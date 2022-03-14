@@ -30,9 +30,11 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 ## Run the Code
 ### NGCF with Gowalla
 
-**원본 대비 옵션 2개 추가** 
+**원본 대비 옵션 4개 추가** 
 - ```--scc``` : Spectral Co-Clustering 적용 여부. 0 : 적용 / 1 : 미적용(원본)
 - ```--create``` : 최초 ```*.npz```파일 생성 여부. 0 : 기존 npz load / 1 : npz파일 생성    
+- ```--N``` : 몇 개의 cluster로 나눌 건지?
+- ```--cl_num``` 몇 번째 cluster로 실험할건지
 
 ```
 python main.py --dataset gowalla --alg_type ngcf --regs [1e-5] --embed_size 64 --layer_size [64,64,64] --lr 0.0001 --save_flag 1 --pretrain 0 --batch_size 4096 --epoch 5000 --verbose 1 --mess_dropout [0.1,0.1,0.1] --create 0 --scc 0 --N 5 --cl_num 0
