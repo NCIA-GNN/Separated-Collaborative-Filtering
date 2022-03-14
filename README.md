@@ -24,6 +24,7 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 |Cluster 4|7188|2048|64|0.00269|0.22587|680|
 |Cluster 4|7188|1024|64|0.00269|0.22505|520|
 |Cluster 5|19747|4096|64|0.00117|0.|0|
+|Cluster 5|19747|1024|64|0.00117|0.|0|
 |Weighted Average|||||00||
 
 ## Run the Code
@@ -34,6 +35,6 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 - ```--create``` : 최초 ```*.npz```파일 생성 여부. 0 : 기존 npz load / 1 : npz파일 생성    
 
 ```
-python main.py --dataset gowalla --alg_type ngcf --regs [1e-5] --embed_size 64 --layer_size [64,64,64] --lr 0.0001 --save_flag 1 --pretrain 0 --batch_size 4096 --epoch 5000 --verbose 1 --mess_dropout [0.1,0.1,0.1] --create 0 --scc 0 
+python main.py --dataset gowalla --alg_type ngcf --regs [1e-5] --embed_size 64 --layer_size [64,64,64] --lr 0.0001 --save_flag 1 --pretrain 0 --batch_size 4096 --epoch 5000 --verbose 1 --mess_dropout [0.1,0.1,0.1] --create 0 --scc 0 --N 5 --cl_num 0
 
 ```
