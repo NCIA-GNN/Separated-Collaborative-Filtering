@@ -26,7 +26,7 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 |Cluster 5|19747|4096|64|0.00117|**0.22321**|850|
 |Cluster 5|19747|2048|64|0.00117|0.22241|710|
 |Cluster 5|19747|1024|64|0.00117|0.22192|590|
-|Weighted Average|||||0.22863||
+|Weighted Average|||||**0.22863**||
 
 ## Run the Code
 ### NGCF with Gowalla
