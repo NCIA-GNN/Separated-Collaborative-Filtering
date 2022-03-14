@@ -164,7 +164,7 @@ class Model_Wrapper(object):
 
             t2 = time()
             users_to_test = list(data_generator.test_set.keys())
-            print(len(users_to_test))
+            
             ret = self.test(users_to_test, drop_flag=True)
             training_time_list.append(t2 - t1)
 

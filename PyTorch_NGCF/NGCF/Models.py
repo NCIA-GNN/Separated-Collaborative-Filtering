@@ -25,7 +25,7 @@ class NGCF(nn.Module):
 
         self.user_embedding = nn.Embedding(n_users, embedding_dim)
         self.item_embedding = nn.Embedding(n_items, embedding_dim)
-#         print("check", self.n_users, self.n_items)
+
         self._init_weight_()
         
     def _init_weight_(self):

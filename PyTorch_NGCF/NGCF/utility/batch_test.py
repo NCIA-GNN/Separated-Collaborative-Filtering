@@ -12,6 +12,7 @@ args = parse_args()
 Ks = eval(args.Ks)
 
 data_generator = Data(path=args.data_path + args.dataset, batch_size=args.batch_size, spectral_cc = args.scc)
+
 USR_NUM, ITEM_NUM = data_generator.n_users, data_generator.n_items
 N_TRAIN, N_TEST = data_generator.n_train, data_generator.n_test
 BATCH_SIZE = args.batch_size
@@ -79,6 +80,8 @@ def get_performance(user_pos_test, r, auc, Ks):
 
 
 def test_one_user(x):
+    USR_NUM, ITEM_NUM = data_generator.n_users, data_generator.n_items
+    N_TRAIN, N_TEST = data_generator.n_train, data_generator.n_test
     # user u's ratings for user u
     rating = x[0]
     #uid
@@ -107,15 +110,15 @@ def test_torch(ua_embeddings, ia_embeddings, users_to_test, drop_flag=False, bat
     result = {'precision': np.zeros(len(Ks)), 'recall': np.zeros(len(Ks)), 'ndcg': np.zeros(len(Ks)),
               'hit_ratio': np.zeros(len(Ks)), 'auc': 0.}
     pool = multiprocessing.Pool(cores)
-
+    USR_NUM, ITEM_NUM = data_generator.n_users, data_generator.n_items
+    N_TRAIN, N_TEST = data_generator.n_train, data_generator.n_test
     u_batch_size = BATCH_SIZE * 2
     i_batch_size = BATCH_SIZE
-
+    
     test_users = users_to_test
     n_test_users = len(test_users)
     n_user_batchs = n_test_users // u_batch_size + 1
     count = 0
-
     for u_batch_id in range(n_user_batchs):
         start = u_batch_id * u_batch_size
         end = (u_batch_id + 1) * u_batch_size

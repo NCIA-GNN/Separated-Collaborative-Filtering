@@ -89,134 +89,147 @@ class Data(object):
             sp.save_npz(self.path + '/s_incd_mat.npz', R)
             sp.save_npz(self.path + '/s_adj_mat.npz', adj_mat)
             sp.save_npz(self.path + '/s_norm_adj_mat.npz', norm_adj_mat)
-            sp.save_npz(self.path + '/s_mean_adj_mat.npz', mean_adj_mat) 
-        
+            sp.save_npz(self.path + '/s_mean_adj_mat.npz', mean_adj_mat)      
+
+        if scc==0 : 
+            
+            # Load Incidence Matrix
+            R = sp.load_npz(self.path + '/s_incd_mat.npz')
+            
+            # Clustering
+            N = 5
+            
+            bicl = SpectralCoclustering(n_clusters=N, random_state=0)
+            bicl.fit(R)
+            print('Row (user) cluster counts:', np.unique(bicl.row_labels_, return_counts=True)[1])
+            print('Column (Item) cluster counts:', np.unique(bicl.column_labels_, return_counts=True)[1])
+            
+            # Select first cluster
+            sample_cluster_num = 0
+            row_idx, col_idx = np.argsort(bicl.row_labels_), np.argsort(bicl.column_labels_)
+            sorted_row = sorted(bicl.row_labels_)
+            chenge_points_row= []
+            for i in range(len(sorted_row)-1):
+                if i ==0:
+                    chenge_points_row.append(i)
+                if sorted_row[i]!=sorted_row[i+1]:
+                    chenge_points_row.append(i+1)
+            
+            # Get new incidence matrix from user listbelongs to first cluster (ignore clustered items)
+            sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
+            item_list = []            
+            for u in sample_row_idx:
+                for i in self.train_items[u]:
+                    item_list.append(i)
+                for i in self.test_set[u]:
+                    item_list.append(i)
+            sample_col_idx = sorted(list(set(item_list)))
+            R = R[sample_row_idx,:]
+            R = R[:,sample_col_idx]            
+
+
+            # filtering clustered items
+            sampled_train_set = {k:v for k,v in self.train_items.items() if k in sample_row_idx}
+            sampled_test_set = {k:v for k,v in self.test_set.items() if k in sample_row_idx}
+            
+            # re-index the sampled items
+            user_index = dict(zip(sample_row_idx,range(len(sample_row_idx))))
+            item_index = dict(zip(sample_col_idx,range(len(sample_col_idx))))         
+            new_train_set, new_test_set = {}, {}
+            self.n_train, self.n_test=0, 0
+            self.exist_users = []
+            for k in sampled_train_set:
+                new_k = user_index[k]
+                items = sampled_train_set[k]
+                self.exist_users.append(new_k)
+                item_list = []
+                for i in items:
+                    new_item = item_index[i]
+                    item_list.append(new_item)
+                self.n_train += len(item_list)
+                new_train_set[new_k] = item_list
+
+            for k in sampled_test_set:
+                new_k = user_index[k]
+                items = sampled_test_set[k]
+                item_list = []
+                
+                for i in items:
+                    
+                    new_item = item_index[i]
+                    item_list.append(new_item)
+                self.n_test += len(item_list)
+                new_test_set[new_k] = item_list
+            self.train_items = new_train_set
+            self.test_set = new_test_set
+
+            # Make adjacency matrix again for sampled cluster
+            self.n_users, self.n_items = R.shape[0], R.shape[1]
+            self.R = R
+            
+            adj_mat = sp.dok_matrix((self.n_users + self.n_items, self.n_users + self.n_items), dtype=np.float32)
+            adj_mat = adj_mat.tolil()
+            self.R = self.R.tolil()
+            
+            adj_mat[:self.n_users, self.n_users:] = self.R
+            adj_mat[self.n_users:, :self.n_users] = self.R.T
+            
+            ### add epsilon // Zeros are not a reason why error occurs.. 
+#             e_mat_u = sp.dok_matrix((self.n_users, self.n_users), dtype = np.float32)
+#             e_mat_i = sp.dok_matrix((self.n_items, self.n_items), dtype = np.float32)
+#             e_mat_u[:,:] = 1e-8
+#             e_mat_i[:,:] = 1e-8
+#             adj_mat[:self.n_users,:self.n_users] = e_mat_u
+#             adj_mat[self.n_users:,self.n_users:] = e_mat_i
+            
+            adj_mat = adj_mat.todok()
+
+            def normalized_adj_single(adj):
+                rowsum = np.array(adj.sum(1))
+
+                d_inv = np.power(rowsum, -1).flatten()
+                d_inv[np.isinf(d_inv)] = 0.
+                d_mat_inv = sp.diags(d_inv)
+
+                norm_adj = d_mat_inv.dot(adj)
+                # norm_adj = adj.dot(d_mat_inv)
+                print('generate single-normalized adjacency matrix.')
+                return norm_adj.tocoo()
+
+            def get_D_inv(adj):
+                rowsum = np.array(adj.sum(1))
+
+                d_inv = np.power(rowsum, -1).flatten()
+                d_inv[np.isinf(d_inv)] = 0.
+                d_mat_inv = sp.diags(d_inv)
+                return d_mat_inv
+
+            def check_adj_if_equal(adj):
+                dense_A = np.array(adj.todense())
+                degree = np.sum(dense_A, axis=1, keepdims=False)
+
+                temp = np.dot(np.diag(np.power(degree, -1)), dense_A)
+                print('check normalized adjacency matrix whether equal to this laplacian matrix.')
+
+            self.print_statistics()
+            print("Clustering Completed")
+            norm_adj_mat = normalized_adj_single(adj_mat + sp.eye(adj_mat.shape[0]))
+            mean_adj_mat = normalized_adj_single(adj_mat)
+            norm_adj_mat = norm_adj_mat.tocsr()
+            
+            adj_mat = adj_mat.tocsr()
+            mean_adj_mat = mean_adj_mat.tocsr()
+            
+            
         else : 
+            adj_mat = sp.load_npz(self.path + '/s_adj_mat.npz')
+            norm_adj_mat = sp.load_npz(self.path + '/s_norm_adj_mat.npz')
+            mean_adj_mat = sp.load_npz(self.path + '/s_mean_adj_mat.npz')
+            print('already load adj matrix', adj_mat.shape, time() - t1)
+            print('Orgiginal /// n_train=%d, n_test=%d, sparsity=%.5f' % (self.n_train, self.n_test, (self.n_train + self.n_test)/(self.n_users * self.n_items)))
             
 
-            if scc==0 : 
-                R = sp.load_npz(self.path + '/s_incd_mat.npz')
-
-                N = 5
-                sample_cluster_num = 0
-
-                bicl = SpectralCoclustering(n_clusters=N, random_state=0)
-                bicl.fit(R)
-                print('Row (user) cluster counts:', np.unique(bicl.row_labels_, return_counts=True)[1])
-                print('Column (Item) cluster counts:', np.unique(bicl.column_labels_, return_counts=True)[1])
-                row_idx, col_idx = np.argsort(bicl.row_labels_), np.argsort(bicl.column_labels_)
-                sorted_row = sorted(bicl.row_labels_)
-                chenge_points_row= []
-                for i in range(len(sorted_row)-1):
-                    if i ==0:
-                        chenge_points_row.append(i)
-                    if sorted_row[i]!=sorted_row[i+1]:
-                        chenge_points_row.append(i+1)
-                sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
-                item_list = []            
-                for u in sample_row_idx:
-                    for i in self.train_items[u]:
-                        item_list.append(i)
-                    for i in self.test_set[u]:
-                        item_list.append(i)
-                sample_col_idx = sorted(list(set(item_list)))
-                R = R[sample_row_idx,:]
-                R = R[:,sample_col_idx]            
-  
-                
-
-                sampled_train_set = {k:v for k,v in self.train_items.items() if k in sample_row_idx}
-                sampled_test_set = {k:v for k,v in self.test_set.items() if k in sample_row_idx}
-                user_index = dict(zip(sample_row_idx,range(len(sample_row_idx))))
-                item_index = dict(zip(sample_col_idx,range(len(sample_col_idx))))         
-                new_train_set, new_test_set = {}, {}
-
-                self.n_train, self.n_test=0, 0
-                self.exist_users = []
-                for k in sampled_train_set:
-                    new_k = user_index[k]
-                    items = sampled_train_set[k]
-                    self.exist_users.append(new_k)
-                    item_list = []
-                    for i in items:
-                        new_item = item_index[i]
-                        item_list.append(new_item)
-                    self.n_train += len(item_list)
-                    new_train_set[new_k] = item_list
-
-                for k in sampled_test_set:
-                    new_k = user_index[k]
-                    items = sampled_test_set[k]
-                    item_list = []
-                    
-                    for i in items:
-                        new_item = item_index[i]
-                        item_list.append(new_item)
-                    self.n_test += len(item_list)
-                    new_test_set[new_k] = item_list
-                self.train_items = new_train_set
-                self.test_set = new_test_set
-
-                self.n_users, self.n_items = R.shape[0], R.shape[1]
-                self.R = R
-
-
-
-                adj_mat = sp.dok_matrix((self.n_users + self.n_items, self.n_users + self.n_items), dtype=np.float32)
-                adj_mat = adj_mat.tolil()
-
-                self.R = self.R.tolil()
-                adj_mat[:self.n_users, self.n_users:] = self.R
-                adj_mat[self.n_users:, :self.n_users] = self.R.T
-                adj_mat = adj_mat.todok()
-
-
-
-                def normalized_adj_single(adj):
-                    rowsum = np.array(adj.sum(1))
-
-                    d_inv = np.power(rowsum, -1).flatten()
-                    d_inv[np.isinf(d_inv)] = 0.
-                    d_mat_inv = sp.diags(d_inv)
-
-                    norm_adj = d_mat_inv.dot(adj)
-                    # norm_adj = adj.dot(d_mat_inv)
-                    print('generate single-normalized adjacency matrix.')
-                    return norm_adj.tocoo()
-
-                def get_D_inv(adj):
-                    rowsum = np.array(adj.sum(1))
-
-                    d_inv = np.power(rowsum, -1).flatten()
-                    d_inv[np.isinf(d_inv)] = 0.
-                    d_mat_inv = sp.diags(d_inv)
-                    return d_mat_inv
-
-                def check_adj_if_equal(adj):
-                    dense_A = np.array(adj.todense())
-                    degree = np.sum(dense_A, axis=1, keepdims=False)
-
-                    temp = np.dot(np.diag(np.power(degree, -1)), dense_A)
-                    print('check normalized adjacency matrix whether equal to this laplacian matrix.')
-
-                self.print_statistics()
-                print("Clustering Completed")
-                norm_adj_mat = normalized_adj_single(adj_mat + sp.eye(adj_mat.shape[0]))
-
-                mean_adj_mat = normalized_adj_single(adj_mat)
-
-                norm_adj_mat = norm_adj_mat.tocsr()
-                adj_mat = adj_mat.tocsr()
-                mean_adj_mat = mean_adj_mat.tocsr()
-            else : 
-                adj_mat = sp.load_npz(self.path + '/s_adj_mat.npz')
-                norm_adj_mat = sp.load_npz(self.path + '/s_norm_adj_mat.npz')
-                mean_adj_mat = sp.load_npz(self.path + '/s_mean_adj_mat.npz')
-                print('already load adj matrix', adj_mat.shape, time() - t1)
-                print('Orgiginal /// n_train=%d, n_test=%d, sparsity=%.5f' % (self.n_train, self.n_test, (self.n_train + self.n_test)/(self.n_users * self.n_items)))
-
-
-            return adj_mat, norm_adj_mat, mean_adj_mat
+        return adj_mat, norm_adj_mat, mean_adj_mat
             
 
         
