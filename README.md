@@ -10,7 +10,7 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 - ```utility/load_data.py``` 에서 ```def get_adj_mat```에 clustering / index rearrange 코드 작성(clustering 핵심코드)
 - 1개의 cluster를 골라서 re-index해서 학습 진행
 - 동시학습은 아직임
-## gowalla dataset 중간결과(early stopping)
+## gowalla dataset 중간결과(early stopping 10 flags)
 
 |Type|Num. of Groups|Users|batch|embed|Sparsity|Recall@20|Precision@20|Hit@20|NDCG@20|best epoch|
 |------|---|---|---|---|---|---|---|---|---|---|
@@ -45,8 +45,15 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 |Cluster 2|2|21060|4096|64|0.0011|0.15280|0.04950|0.53889|0.22619|1320|
 |Cluster 2|2|21060|1024|64|0.0011|0.15598|0.05022|0.54406|0.22843|520|
 
-
-
+## amazon-book dataset 중간결과(early stopping 10 flags)
+|Type|Num. of Groups|Users|batch|embed|Sparsity|Recall@20|Precision@20|Hit@20|NDCG@20|best epoch|
+|------|---|---|---|---|---|---|---|---|---|---|
+|No clustering|0|52643|4096|64|0.00062|0.|0.|0.|0.||
+|Cluster 1|5|21166|4096|64|0.00091|0.03740|0.01520|0.22028|0.06653|390|
+|Cluster 2|5|29557|4096|64|0.00074|0.03273|0.01375|0.20334|0.06195|290|
+|Cluster 3|5|216|4096|64|0.03330|0.05135|0.02442|0.25581|0.07507|50|
+|Cluster 4|5|1382|4096|64|0.03330|0.04026|0.0161|0.24819|0.06721|420|
+|Cluster 5|5|322|4096|64|0.01227|0.08291|0.03199|0.35714|0.10440|190|
 
 ## Run the Code
 ### NGCF with Gowalla
