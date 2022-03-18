@@ -48,12 +48,13 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 ## amazon-book dataset 중간결과(early stopping 10 flags)
 |Type|Num. of Groups|Users|batch|embed|Sparsity|Recall@20|Precision@20|Hit@20|NDCG@20|best epoch|
 |------|---|---|---|---|---|---|---|---|---|---|
-|No clustering|0|52643|4096|64|0.00062|0.|0.|0.|0.||
+|No clustering|0|52643|4096|64|0.00062|0.034|0.01414|0.20865|0.06281|300|
 |Cluster 1|5|21166|4096|64|0.00091|0.03740|0.01520|0.22028|0.06653|390|
 |Cluster 2|5|29557|4096|64|0.00074|0.03273|0.01375|0.20334|0.06195|290|
 |Cluster 3|5|216|4096|64|0.03330|0.05135|0.02442|0.25581|0.07507|50|
 |Cluster 4|5|1382|4096|64|0.03330|0.04026|0.0161|0.24819|0.06721|420|
 |Cluster 5|5|322|4096|64|0.01227|0.08291|0.03199|0.35714|0.10440|190|
+|Weighted Average|5|||||0.03519|0.01455|0.21248|0.06424||
 
 ## Run the Code
 ### NGCF with Gowalla
