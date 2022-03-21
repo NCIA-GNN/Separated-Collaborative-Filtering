@@ -27,9 +27,13 @@ class Model_Wrapper(object):
 
         self.n_users = data_config['n_users']
         self.n_items = data_config['n_items']
-
-
-
+        # if args.scc :
+        #     self.incd_mat = data_config['incd_mat']
+        #     plain_adj, norm_adj, mean_adj, n_users, n_items = data_generator.co_clustering(self.incd_mat)
+        #     data_config['norm_adj'] = norm_adj
+        #     self.n_users = n_users
+        #     self.n_items = n_items
+            
         self.norm_adj = data_config['norm_adj']
         self.norm_adj = self.sparse_mx_to_torch_sparse_tensor(self.norm_adj).float()
 
@@ -291,7 +295,7 @@ if __name__ == '__main__':
     
 
     
-    plain_adj, norm_adj, mean_adj= data_generator.get_adj_mat(scc=args.scc, create=args.create, N=args.N, cl_num = args.cl_num)  ## clustered sample
+    plain_adj, norm_adj, mean_adj, incd_mat= data_generator.get_adj_mat(scc=args.scc, create=args.create, N=args.N, cl_num = args.cl_num)  ## clustered sample
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
     
@@ -303,7 +307,10 @@ if __name__ == '__main__':
     else:
         config['norm_adj'] = mean_adj + sp.eye(mean_adj.shape[0])
         print('use the mean adjacency matrix')
-
+    if args.scc :
+        config['incd_mat'] = incd_mat
+        print('use the incidence matrix')
+        
     t0 = time()
 
     if args.pretrain == -1:
