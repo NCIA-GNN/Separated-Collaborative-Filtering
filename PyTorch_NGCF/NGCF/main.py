@@ -7,6 +7,7 @@ import torch.optim as optim
 import os
 import sys
 import datetime
+import time
 import math
 from Models import *
 
@@ -72,6 +73,8 @@ class Model_Wrapper(object):
             self.model = NGCF(self.n_users, self.n_items, self.emb_dim, self.weight_size, self.mess_dropout)
         elif self.alg_type in ['mf']:
             self.model = MF(self.n_users, self.n_items, self.emb_dim)
+        elif self.alg_type in ['lightgcn']:
+            self.model = LightGCN(self.n_users, self.n_items, self.emb_dim, self.weight_size, self.mess_dropout)
         else:
             raise Exception('Dont know which model to train')
 
@@ -111,7 +114,8 @@ class Model_Wrapper(object):
         cur_best_pre_0 = 0.
 
         n_batch = data_generator.n_train // args.batch_size + 1
-
+        n_users = data_generator.n_users
+        print(f"Number of Users : {n_users}")
         for epoch in range(args.epoch):
             t1 = time()
             loss, mf_loss, emb_loss, reg_loss = 0., 0., 0., 0.
@@ -206,9 +210,9 @@ class Model_Wrapper(object):
                 print('save the weights in path: ', self.weights_save_path)
 
         if rec_loger != []:
-            self.print_final_results(rec_loger, pre_loger, ndcg_loger, hit_loger, training_time_list)
+            self.print_final_results(rec_loger, pre_loger, ndcg_loger, hit_loger, training_time_list,n_users)
 
-    def print_final_results(self, rec_loger, pre_loger, ndcg_loger, hit_loger, training_time_list):
+    def print_final_results(self, rec_loger, pre_loger, ndcg_loger, hit_loger, training_time_list,n_users):
         recs = np.array(rec_loger)
         pres = np.array(pre_loger)
         ndcgs = np.array(ndcg_loger)
@@ -223,22 +227,32 @@ class Model_Wrapper(object):
                       '\t'.join(['%.5f' % r for r in hit[idx]]),
                       '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
         print(final_perf)
-
+        
         # Benchmarking: time consuming
         avg_time = sum(training_time_list) / len(training_time_list)
         time_consume = "Benchmarking time consuming: average {}s per epoch".format(avg_time)
         print(time_consume)
 
         results_path = '%soutput/%s/%s.result' % (args.proj_path, args.dataset, self.model_type)
-
+        result_summary_path = '%soutput/summary.result' % (args.proj_path)
         ensureDir(results_path)
         f = open(results_path, 'a')
-
+        
         f.write(
             'datetime: %s\nembed_size=%d, lr=%.5f, mess_dropout=%s, regs=%s, adj_type=%s\n\t%s\n\t%s\n\n'
             % (datetime.datetime.now(), args.embed_size, args.lr, args.mess_dropout, args.regs,
                args.adj_type, final_perf, time_consume))
+              
         f.close()
+        ensureDir(results_path) 
+        f2 = open(result_summary_path, 'a')
+        f3 = open(result_summary_path, 'r')
+        text = f3.readline()
+        a = int(time())
+        if len(text)==0:
+            f2.write('|{:^12}|{:^13}|{:^10}|{:^14}|{:^10}|{:^10}|{:^12}|{:^14}|{:^10}|{:^12}|{:^12}|{:^14}|{:^10}|\n'.format('Time', 'Dataset','Model','batch_size','embed','lr','# Cluster','Cluster idx.','# Users','Recall@20','NDCG@20','Precision@20','hit@20'))
+        f2.write(f"|{int(time()):^12}|{args.dataset:^13}|{self.alg_type:^10}|{self.batch_size:^14}|{args.embed_size:^10}|{args.lr:^10}|{args.N:^12}|{args.cl_num:^14}|{n_users:^10}|{recs[idx][0]:^12.5f}|{ndcgs[idx][0]:^12.5f}|{pres[idx][0]:^14.5f}|{hit[idx][0]:^10.5f}|\n")              
+        f2.close()
 
 
     def bpr_loss(self, users, pos_items, neg_items):
