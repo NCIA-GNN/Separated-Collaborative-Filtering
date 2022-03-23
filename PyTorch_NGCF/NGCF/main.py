@@ -193,7 +193,7 @@ class Model_Wrapper(object):
                 print(perf_str)
             cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
                                                                         stopping_step, expected_order='acc',
-                                                                        flag_step=5)
+                                                                        flag_step=1)
 
             # *********************************************************
             # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
@@ -217,7 +217,7 @@ class Model_Wrapper(object):
         pres = np.array(pre_loger)
         ndcgs = np.array(ndcg_loger)
         hit = np.array(hit_loger)
-
+        sparsity = (data_generator.n_train + data_generator.n_test)/(data_generator.n_users * data_generator.n_items)
         best_rec_0 = max(recs[:, 0])
         idx = list(recs[:, 0]).index(best_rec_0)
 
@@ -245,13 +245,14 @@ class Model_Wrapper(object):
               
         f.close()
         ensureDir(results_path) 
+        
         f2 = open(result_summary_path, 'a')
         f3 = open(result_summary_path, 'r')
         text = f3.readline()
         a = int(time())
         if len(text)==0:
-            f2.write('|{:^12}|{:^13}|{:^10}|{:^14}|{:^10}|{:^10}|{:^12}|{:^14}|{:^10}|{:^12}|{:^12}|{:^14}|{:^10}|\n'.format('Time', 'Dataset','Model','batch_size','embed','lr','# Cluster','Cluster idx.','# Users','Recall@20','NDCG@20','Precision@20','hit@20'))
-        f2.write(f"|{int(time()):^12}|{args.dataset:^13}|{self.alg_type:^10}|{self.batch_size:^14}|{args.embed_size:^10}|{args.lr:^10}|{args.N:^12}|{args.cl_num:^14}|{n_users:^10}|{recs[idx][0]:^12.5f}|{ndcgs[idx][0]:^12.5f}|{pres[idx][0]:^14.5f}|{hit[idx][0]:^10.5f}|\n")              
+            f2.write('|{:^12}|{:^13}|{:^10}|{:^14}|{:^10}|{:^10}|{:^12}|{:^14}|{:^10}|{:^10}|{:^10}|{:^10}|{:^12}|{:^12}|{:^14}|{:^10}|\n'.format('Time','Dataset','Model','batch_size','embed','lr','# Cluster','Cluster idx.','# Users','# train', '# test','sparsity','Recall@20','NDCG@20','Precision@20','hit@20'))
+        f2.write(f"|{int(time()):^12}|{args.dataset:^13}|{self.alg_type:^10}|{self.batch_size:^14}|{args.embed_size:^10}|{args.lr:^10}|{args.N:^12}|{args.cl_num:^14}|{n_users:^10}|{data_generator.n_train:^10}|{data_generator.n_test:^10}|{sparsity:^10.5f}|{recs[idx][0]:^12.5f}|{ndcgs[idx][0]:^12.5f}|{pres[idx][0]:^14.5f}|{hit[idx][0]:^10.5f}|\n")              
         f2.close()
 
 

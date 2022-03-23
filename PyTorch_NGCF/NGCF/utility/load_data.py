@@ -101,7 +101,7 @@ class Data(object):
             adj_mat = sp.load_npz(self.path + '/s_adj_mat.npz')
             norm_adj_mat = sp.load_npz(self.path + '/s_norm_adj_mat.npz')
             mean_adj_mat = sp.load_npz(self.path + '/s_mean_adj_mat.npz')
-            R = sp.load_npz(self.path + '/s_incd_mat.npz')
+            incd_mat = sp.load_npz(self.path + '/s_incd_mat.npz')
             print('already load adj matrix', adj_mat.shape, time() - t1)
             print('Orgiginal /// n_train=%d, n_test=%d, sparsity=%.5f' % (self.n_train, self.n_test, (self.n_train + self.n_test)/(self.n_users * self.n_items)))
             
