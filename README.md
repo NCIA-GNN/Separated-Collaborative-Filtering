@@ -9,7 +9,7 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 - gowalla 기준 incidence_matrix -> spectral coclustering -> 1개 cluster에 대해 학습 진행
 - ```utility/load_data.py``` 에서 ```def get_adj_mat```에 clustering / index rearrange 코드 작성(clustering 핵심코드)
 - 1개의 cluster를 골라서 re-index해서 학습 진행
-- 동시학습은 아직임
+<!-- - 동시학습은 아직임
 ## gowalla dataset 중간결과(early stopping 10 flags)
 
 |Type|Num. of Groups|Users|batch|embed|Sparsity|Recall@20|Precision@20|Hit@20|NDCG@20|best epoch|
@@ -55,7 +55,7 @@ Original Pytorch  Implementation can be found [here](https://github.com/liu-jc/P
 |Cluster 4|5|1382|4096|64|0.03330|0.04026|0.0161|0.24819|0.06721|420|
 |Cluster 5|5|322|4096|64|0.01227|0.08291|0.03199|0.35714|0.10440|190|
 |Weighted Average|5|||||0.03519|0.01455|0.21248|0.06424||
-
+ -->
 ## Run the Code
 ### NGCF with Gowalla
 
