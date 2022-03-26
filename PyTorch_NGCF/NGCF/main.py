@@ -21,23 +21,31 @@ class Model_Wrapper(object):
         self.model_type = args.model_type
         self.adj_type = args.adj_type
         self.alg_type = args.alg_type
-
+        self.scc = args.scc
         self.mess_dropout = eval(args.mess_dropout)
 
         self.pretrain_data = pretrain_data
 
         self.n_users = data_config['n_users']
         self.n_items = data_config['n_items']
-        # if args.scc :
-        #     self.incd_mat = data_config['incd_mat']
-        #     plain_adj, norm_adj, mean_adj, n_users, n_items = data_generator.co_clustering(self.incd_mat)
-        #     data_config['norm_adj'] = norm_adj
-        #     self.n_users = n_users
-        #     self.n_items = n_items
+        
             
-        self.norm_adj = data_config['norm_adj']
-        self.norm_adj = self.sparse_mx_to_torch_sparse_tensor(self.norm_adj).float()
-
+        if self.scc == 2 :
+            self.norm_adj_list = data_config['norm_adj_list']
+            self.idx_list = data_config['idx_list']
+            self.incd_mat_list = data_config['incd_mat_list']
+            
+            self.s_norm_adj_list=[]
+            for norm_adj in self.norm_adj_list:
+                s_norm_adj = self.sparse_mx_to_torch_sparse_tensor(norm_adj).float()
+                self.s_norm_adj_list.append(s_norm_adj.cuda())
+                
+        else : 
+            self.norm_adj = data_config['norm_adj']
+            self.norm_adj = self.sparse_mx_to_torch_sparse_tensor(self.norm_adj).float()
+            self.norm_adj = self.norm_adj.cuda()
+        
+            
 
         self.record_alphas = False
 
@@ -67,19 +75,21 @@ class Model_Wrapper(object):
         """
 
         print('----self.alg_type is {}----'.format(self.alg_type))
+        if self.scc == 2:
+            self.model=UCR(self.s_norm_adj_list, self.incd_mat_list , self.idx_list, self.alg_type, self.emb_dim, self.weight_size, self.mess_dropout)
+        else : 
+            if self.alg_type in ['ngcf']:
 
-        if self.alg_type in ['ngcf']:
+                self.model = NGCF(self.n_users, self.n_items, self.emb_dim, self.weight_size, self.mess_dropout)
+            elif self.alg_type in ['mf']:
+                self.model = MF(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['lightgcn']:
+                self.model = LightGCN(self.n_users, self.n_items, self.emb_dim, self.weight_size, self.mess_dropout)
+            else:
+                raise Exception('Dont know which model to train')
             
-            self.model = NGCF(self.n_users, self.n_items, self.emb_dim, self.weight_size, self.mess_dropout)
-        elif self.alg_type in ['mf']:
-            self.model = MF(self.n_users, self.n_items, self.emb_dim)
-        elif self.alg_type in ['lightgcn']:
-            self.model = LightGCN(self.n_users, self.n_items, self.emb_dim, self.weight_size, self.mess_dropout)
-        else:
-            raise Exception('Dont know which model to train')
-
         self.model = self.model.cuda()
-        self.norm_adj = self.norm_adj.cuda()
+        
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
         self.lr_scheduler = self.set_lr_scheduler()
@@ -102,7 +112,11 @@ class Model_Wrapper(object):
     def test(self, users_to_test, drop_flag=False, batch_test_flag=False):
         self.model.eval()
         with torch.no_grad():
-            ua_embeddings, ia_embeddings = self.model(self.norm_adj)
+            if self.scc == 2:
+                ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+            else : 
+                ua_embeddings, ia_embeddings = self.model(self.norm_adj)
+            
         result = test_torch(ua_embeddings, ia_embeddings, users_to_test)
         return result
 
@@ -116,6 +130,7 @@ class Model_Wrapper(object):
         n_batch = data_generator.n_train // args.batch_size + 1
         n_users = data_generator.n_users
         print(f"Number of Users : {n_users}")
+        print(f"Number of Intereractions : {data_generator.n_train}")
         for epoch in range(args.epoch):
             t1 = time()
             loss, mf_loss, emb_loss, reg_loss = 0., 0., 0., 0.
@@ -129,8 +144,11 @@ class Model_Wrapper(object):
                 sample_t1 = time()
                 users, pos_items, neg_items = data_generator.sample()
                 sample_time += time() - sample_t1
-
-                ua_embeddings, ia_embeddings = self.model(self.norm_adj)
+                if self.scc == 2:
+                    ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+                    
+                else : 
+                    ua_embeddings, ia_embeddings = self.model(self.norm_adj)
 
                 u_g_embeddings = ua_embeddings[users]
                 pos_i_g_embeddings = ia_embeddings[pos_items]
@@ -144,6 +162,7 @@ class Model_Wrapper(object):
                 batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss
 
                 batch_loss.backward()
+                # batch_loss.backward(retain_graph=True)
                 self.optimizer.step()
 
                 loss += float(batch_loss)
@@ -193,7 +212,7 @@ class Model_Wrapper(object):
                 print(perf_str)
             cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
                                                                         stopping_step, expected_order='acc',
-                                                                        flag_step=1)
+                                                                        flag_step=5)
 
             # *********************************************************
             # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
@@ -306,25 +325,29 @@ if __name__ == '__main__':
     Generate the Laplacian matrix, where each entry defines the decay factor (e.g., p_ui) between two connected nodes.
     """
     
-#     plain_adj, norm_adj, mean_adj = data_generator.get_adj_mat()  ## original 
-    
+#     plain_adj, norm_adj, mean_adj = data_generator.get_adj_mat()  ## original     
 
-    
-    plain_adj, norm_adj, mean_adj, incd_mat= data_generator.get_adj_mat(scc=args.scc, create=args.create, N=args.N, cl_num = args.cl_num)  ## clustered sample
+    if args.scc == 2:
+        norm_adj_list, incd_mat_list, idx_list = data_generator.get_adj_mat(scc=args.scc, N=args.N)
+    else : 
+        plain_adj, norm_adj, mean_adj, incd_mat= data_generator.get_adj_mat(scc=args.scc, N=args.N, cl_num = args.cl_num)  ## clustered sample
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
-    
-    
-    if args.adj_type == 'norm':
-    
-        config['norm_adj'] = norm_adj
-        print('use the normalized adjacency matrix')
-    else:
-        config['norm_adj'] = mean_adj + sp.eye(mean_adj.shape[0])
-        print('use the mean adjacency matrix')
-    if args.scc :
-        config['incd_mat'] = incd_mat
-        print('use the incidence matrix')
+    if args.scc==2 : 
+        config['norm_adj_list'] = norm_adj_list
+        config['idx_list'] = idx_list
+        config['incd_mat_list'] = incd_mat_list
+    else :     
+        if args.adj_type == 'norm':
+
+            config['norm_adj'] = norm_adj
+            print('use the normalized adjacency matrix')
+        else:
+            config['norm_adj'] = mean_adj + sp.eye(mean_adj.shape[0])
+            print('use the mean adjacency matrix')
+        if args.scc == 1 :
+            config['incd_mat'] = incd_mat
+            print('use the incidence matrix')
         
     t0 = time()
 

@@ -20,7 +20,7 @@ def parse_args():
                         help='Number of epoch.')
 
     parser.add_argument('--embed_size', type=int, default=64,
-                        help='Embedding size.')
+                        help='Embedding size.') 
     parser.add_argument('--layer_size', nargs='?', default='[64]',
                         help='Output sizes of every layer')
 
@@ -58,8 +58,6 @@ def parse_args():
                         help='0: Disable performance report w.r.t. sparsity levels, 1: Show performance report w.r.t. sparsity levels')
     parser.add_argument('--scc', type=int, default=0,
                         help='Spectral CC Sampling. 0 : scc , 1 : original')
-    parser.add_argument('--create', type=int, default=0,
-                        help='create adj matrix. 0 : No , 1 : Create')
     parser.add_argument('--N', type=int, default=5,
                         help='the number of cluster')
     parser.add_argument('--cl_num', type=int, default=0,
