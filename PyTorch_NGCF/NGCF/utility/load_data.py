@@ -56,7 +56,7 @@ class Data(object):
         self.n_users += 1
 
         
-           
+        
         self.R = sp.dok_matrix((self.n_users, self.n_items), dtype=np.float32)
         self.row, self.col = self.R.shape[0], self.R.shape[1]
         print("Original R size", self.R.shape)
@@ -116,8 +116,8 @@ class Data(object):
             
             # Load Incidence Matrix
             incd_mat = sp.load_npz(self.path + '/s_incd_mat.npz')
-            adj_mat_list,  incd_matrix_list, idx_list = self.co_clustering(incd_mat, N,scc)
-            return adj_mat_list[cl_num]
+            adj_mat_list,  incd_matrix_list, idx_list = self.co_clustering(incd_mat, N,scc, cl_num)
+            return adj_mat_list[0]
         
         elif scc==2 :  ## Combine mode
             adj_mat_list = []
@@ -347,7 +347,7 @@ class Data(object):
 
 
         return split_uids, split_state
-    def co_clustering(self, incd_mat, N, scc):
+    def co_clustering(self, incd_mat, N, scc, cl_num=0):
         
         bicl = SpectralCoclustering(n_clusters=N, random_state=0)
         bicl.fit(incd_mat)
@@ -365,11 +365,61 @@ class Data(object):
         adj_matrix_list = []
         incd_matrix_list = []
         idx_list = []
-        
-        for cl_num in range(N):
+        if scc==2:
+            for n in range(N):
+                R = incd_mat
+                sample_cluster_num = n
+
+                # Get new incidence matrix from user listbelongs to first cluster (ignore clustered items)
+                if sample_cluster_num == (N-1) : 
+                    sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:]) 
+                else : 
+                    sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
+                item_list = []            
+                for u in sample_row_idx:
+                    for i in self.train_items[u]:
+                        item_list.append(i)
+                    try :
+                        for i in self.test_set[u]:
+                            item_list.append(i)
+                    except : 
+                        continue
+                sample_col_idx = sorted(list(set(item_list)))
+                R = R[sample_row_idx,:]
+                R = R[:,sample_col_idx]            
+
+            
+                # Make adjacency matrix again for sampled cluster
+                n_users, n_items = R.shape[0], R.shape[1]
+
+
+                adj_mat = sp.dok_matrix((n_users + n_items, n_users + n_items), dtype=np.float32)
+                adj_mat = adj_mat.tolil()
+                R = R.tolil()
+
+                adj_mat[:n_users, n_users:] = R
+                adj_mat[n_users:, :n_users] = R.T
+
+                adj_mat = adj_mat.todok()
+                norm_adj_mat = normalized_adj_single(adj_mat + sp.eye(adj_mat.shape[0]))
+                mean_adj_mat = normalized_adj_single(adj_mat)
+                norm_adj_mat = norm_adj_mat.tocsr()
+
+                adj_mat = adj_mat.tocsr()
+                mean_adj_mat = mean_adj_mat.tocsr()
+                R = R.tocsr()
+                ## only norm_adj_mat
+                adj_matrix_list.append(norm_adj_mat)
+
+                idx_list.append((sample_row_idx, sample_col_idx))
+                incd_matrix_list.append(R)
+
+            print("Clustering Completed")
+            
+        elif scc==1:
             R = incd_mat
             sample_cluster_num = cl_num
-            
+
             # Get new incidence matrix from user listbelongs to first cluster (ignore clustered items)
             if sample_cluster_num == (N-1) : 
                 sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:]) 
@@ -386,48 +436,44 @@ class Data(object):
                     continue
             sample_col_idx = sorted(list(set(item_list)))
             R = R[sample_row_idx,:]
-            R = R[:,sample_col_idx]            
+            R = R[:,sample_col_idx] 
+                    
+                # filtering clustered items
+            sampled_train_set = {k:v for k,v in self.train_items.items() if k in sample_row_idx}
+            sampled_test_set = {k:v for k,v in self.test_set.items() if k in sample_row_idx}
+
+            # re-index the sampled items
+            user_index = dict(zip(sample_row_idx,range(len(sample_row_idx))))
+            item_index = dict(zip(sample_col_idx,range(len(sample_col_idx))))         
+            new_train_set, new_test_set = {}, {}
+            n_train, n_test=0, 0
+            exist_users = []
+            for k in sampled_train_set:
+                new_k = user_index[k]
+                items = sampled_train_set[k]
+                exist_users.append(new_k)
+                item_list = []
+                for i in items:
+                    new_item = item_index[i]
+                    item_list.append(new_item)
+                n_train += len(item_list)
+                new_train_set[new_k] = item_list
+
+            for k in sampled_test_set:
+                new_k = user_index[k]
+                items = sampled_test_set[k]
+                item_list = []
+
+                for i in items:
+
+                    new_item = item_index[i]
+                    item_list.append(new_item)
+                n_test += len(item_list)
+                new_test_set[new_k] = item_list
+
+
             
-            if scc==1:
-            # filtering clustered items
-                sampled_train_set = {k:v for k,v in self.train_items.items() if k in sample_row_idx}
-                sampled_test_set = {k:v for k,v in self.test_set.items() if k in sample_row_idx}
-
-                # re-index the sampled items
-                user_index = dict(zip(sample_row_idx,range(len(sample_row_idx))))
-                item_index = dict(zip(sample_col_idx,range(len(sample_col_idx))))         
-                new_train_set, new_test_set = {}, {}
-                n_train, n_test=0, 0
-                exist_users = []
-                for k in sampled_train_set:
-                    new_k = user_index[k]
-                    items = sampled_train_set[k]
-                    exist_users.append(new_k)
-                    item_list = []
-                    for i in items:
-                        new_item = item_index[i]
-                        item_list.append(new_item)
-                    n_train += len(item_list)
-                    new_train_set[new_k] = item_list
-
-                for k in sampled_test_set:
-                    new_k = user_index[k]
-                    items = sampled_test_set[k]
-                    item_list = []
-
-                    for i in items:
-
-                        new_item = item_index[i]
-                        item_list.append(new_item)
-                    n_test += len(item_list)
-                    new_test_set[new_k] = item_list
-            # self.train_items = new_train_set
-            # self.test_set = new_test_set
-
-            # Make adjacency matrix again for sampled cluster
             n_users, n_items = R.shape[0], R.shape[1]
-            
-
             adj_mat = sp.dok_matrix((n_users + n_items, n_users + n_items), dtype=np.float32)
             adj_mat = adj_mat.tolil()
             R = R.tolil()
@@ -436,10 +482,6 @@ class Data(object):
             adj_mat[n_users:, :n_users] = R.T
 
             adj_mat = adj_mat.todok()
-
-
-            
-            
             norm_adj_mat = normalized_adj_single(adj_mat + sp.eye(adj_mat.shape[0]))
             mean_adj_mat = normalized_adj_single(adj_mat)
             norm_adj_mat = norm_adj_mat.tocsr()
@@ -448,12 +490,22 @@ class Data(object):
             mean_adj_mat = mean_adj_mat.tocsr()
             R = R.tocsr()
             ## only norm_adj_mat
+            self.exist_users = exist_users
+            self.train_items = new_train_set
+            self.test_set = new_test_set
+            self.n_test = n_test
+            self.n_train = n_train
+            self.n_users = n_users
+            self.n_items = n_items
+            self.R = R
             adj_matrix_list.append(norm_adj_mat)
-            
             idx_list.append((sample_row_idx, sample_col_idx))
             incd_matrix_list.append(R)
-        print("Clustering Completed")
+            print("Clustering Completed")
         return adj_matrix_list, incd_matrix_list, idx_list
+
+
+
             # return adj_mat, norm_adj_mat, mean_adj_mat, incid_mat
     
     

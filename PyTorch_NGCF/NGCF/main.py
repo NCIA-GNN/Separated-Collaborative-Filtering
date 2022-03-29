@@ -8,6 +8,7 @@ import os
 import sys
 import datetime
 import time
+
 import math
 from Models import *
 
@@ -22,6 +23,7 @@ class Model_Wrapper(object):
         self.adj_type = args.adj_type
         self.alg_type = args.alg_type
         self.scc = args.scc
+        
         self.mess_dropout = eval(args.mess_dropout)
 
         self.pretrain_data = pretrain_data
@@ -77,6 +79,8 @@ class Model_Wrapper(object):
         print('----self.alg_type is {}----'.format(self.alg_type))
         if self.scc == 2:
             self.model=UCR(self.s_norm_adj_list, self.incd_mat_list , self.idx_list, self.alg_type, self.emb_dim, self.weight_size, self.mess_dropout)
+            # self.model=multi_NGCF(self.s_norm_adj_list, self.incd_mat_list , self.idx_list, self.emb_dim, self.weight_size, self.mess_dropout)
+            
         else : 
             if self.alg_type in ['ngcf']:
 
@@ -89,7 +93,7 @@ class Model_Wrapper(object):
                 raise Exception('Dont know which model to train')
             
         self.model = self.model.cuda()
-        
+        # self.model = nn.DataParallel(self.model)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
         self.lr_scheduler = self.set_lr_scheduler()
@@ -146,6 +150,8 @@ class Model_Wrapper(object):
                 sample_time += time() - sample_t1
                 if self.scc == 2:
                     ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+                    
+        
                     
                 else : 
                     ua_embeddings, ia_embeddings = self.model(self.norm_adj)
@@ -316,6 +322,7 @@ def load_pretrained_data():
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
+    # os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
 
     config = dict()
     
@@ -329,8 +336,11 @@ if __name__ == '__main__':
 
     if args.scc == 2:
         norm_adj_list, incd_mat_list, idx_list = data_generator.get_adj_mat(scc=args.scc, N=args.N)
+    elif args.scc == 1 : 
+        norm_adj = data_generator.get_adj_mat(scc=args.scc, N=args.N, cl_num = args.cl_num)
     else : 
         plain_adj, norm_adj, mean_adj, incd_mat= data_generator.get_adj_mat(scc=args.scc, N=args.N, cl_num = args.cl_num)  ## clustered sample
+    
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
     if args.scc==2 : 
@@ -345,9 +355,9 @@ if __name__ == '__main__':
         else:
             config['norm_adj'] = mean_adj + sp.eye(mean_adj.shape[0])
             print('use the mean adjacency matrix')
-        if args.scc == 1 :
-            config['incd_mat'] = incd_mat
-            print('use the incidence matrix')
+        # if args.scc == 1 :
+        #     config['incd_mat'] = incd_mat
+        #     print('use the incidence matrix')
         
     t0 = time()
 
