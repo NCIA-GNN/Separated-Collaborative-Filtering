@@ -1,11 +1,10 @@
-import torch
+
 import torch.nn as nn
 import torch.sparse as sparse
 import torch.nn.functional as F
 import numpy as np
 from main import *
-
-
+    
 #Universial Clustering Recommendation
 class UCR(nn.Module): 
     
@@ -29,89 +28,54 @@ class UCR(nn.Module):
         self.model_list = nn.ModuleList()
         self.num_model = len(self.s_norm_adj_list) # clustered graph + full graph ex) 3 small cluster + 1 full graph = 4
         
-        # Trial #2
-        # self.user_local_embedding_aggregate = nn.Parameter(torch.zeros((self.incd_mat_list[0].shape[0], self.final_weight_dim),device='cuda',requires_grad = True))
-        # self.item_local_embedding_aggregate = nn.Parameter(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),device='cuda',requires_grad = True))
         
+        self.local_user_embeddings = []
+        self.local_item_embeddings =[]
         
-        self.local_user_embeddings = nn.ModuleList()
-        self.local_item_embeddings = nn.ModuleList()
         for i in range(self.num_model):
             n_users,n_items = self.incd_mat_list[i].shape[0], self.incd_mat_list[i].shape[1]
             self.model_list.append(NGCF(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
             
             if i>=1:             
-                # Trial #1
-                # self.local_user_fc.append(nn.Linear(self.incd_mat_list[i].shape[0], self.incd_mat_list[0].shape[0]))
-                # self.local_item_fc.append(nn.Linear(self.incd_mat_list[i].shape[1], self.incd_mat_list[0].shape[1]))
                 
-                # Trial #3
-                # self.local_user_embeddings.append(nn.Embedding(self.incd_mat_list[i].shape[0], self.incd_mat_list[0].shape[0]))
-                # self.local_item_embeddings.append(nn.Embedding(self.incd_mat_list[i].shape[1], self.incd_mat_list[0].shape[1]))
-                self.local_user_embeddings.append(nn.Embedding(self.incd_mat_list[0].shape[0], self.incd_mat_list[i].shape[0]))
-                self.local_item_embeddings.append(nn.Embedding(self.incd_mat_list[0].shape[1], self.incd_mat_list[i].shape[1]))
-                
-                
-                
-        self._init_weight_()
+                with torch.no_grad():
+                    self.local_user_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[0], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
+                    self.local_item_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
         
-    def _init_weight_(self):
-        for i in range(len(self.local_user_embeddings)):
+            
 
-            nn.init.xavier_uniform_(self.local_user_embeddings[i].weight)
-            nn.init.xavier_uniform_(self.local_item_embeddings[i].weight)
-
-    def forward(self, adj):
+    def forward(self, s_norm_adj_list):
+        
         user_embed_list = []
         item_embed_list = []
-        
         for i in range(self.num_model):
-            u_g_embeddings, i_g_embeddings = self.model_list[i](self.s_norm_adj_list[i])
+            u_g_embeddings, i_g_embeddings = self.model_list[i](s_norm_adj_list[i])
             user_embed_list.append(u_g_embeddings)
             item_embed_list.append(i_g_embeddings)
-            
          # full graph
         user_embd = user_embed_list[0]
         item_embd = item_embed_list[0]
-        
-        # Trial #3 : Similar to Trial #1, but use sparse matmul / RuntimeError: sparse_.is_sparse()INTERNAL ASSERT FAILED 
-        # => if use 'torch.matmul' instead of 'torch.sparse.mm', it explodes.
-        for i in range(1,self.num_model):
-            
-            ratio = float(item_embed_list[i].shape[0]/item_embd.shape[0])
-            
-            local_u_e = user_embed_list[i]
-            local_i_e =  item_embed_list[i]
 
-            u_e = torch.matmul(self.local_user_embeddings[i-1].weight,local_u_e)
-            i_e = torch.matmul(self.local_item_embeddings[i-1].weight,local_i_e)
-            
-            ## 확인해보니 여기서 터짐
-            user_embd = torch.add(user_embd, u_e, alpha = 1)
-            item_embd = torch.add(item_embd, i_e, alpha = 1)
+        with torch.no_grad():
+            for i in range(1,self.num_model):
+                ratio = float(item_embed_list[i].shape[0]/item_embd.shape[0])
+                # self.local_user_embeddings[i-1] = self.local_user_embeddings[i-1] + 1 -1
+                # self.local_item_embeddings[i-1] = self.local_item_embeddings[i-1] + 1 -1
+                # self.local_user_embeddings[i-1].index_add_(0,torch.LongTensor(self.idx_list[0][i-1]).cuda(),user_embed_list[i].cuda())
+                # self.local_item_embeddings[i-1].index_add_(0,torch.LongTensor(self.idx_list[1][i-1]).cuda(),item_embed_list[i].cuda())
+                self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
+                self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
+
+        local_user_embd = torch.sum(torch.stack(self.local_user_embeddings, dim=2),dim=2)
+        local_item_embd = torch.sum(torch.stack(self.local_item_embeddings, dim=2),dim=2)
         
         
-        
-        # Trial #1 : local clustering embedding -> fully connected / memory overflow.. why? it works for 'ml-1m', not for 'gowalla','amazon-book'
-        # for i in range(1,self.num_model):5
-        #     ratio = float(item_embed_list[i].shape[0]/item_embd.shape[0])
-        #     u_e = self.local_user_fc[i-1](torch.transpose(user_embed_list[i],0,1))
-        #     i_e = self.local_item_fc[i-1](torch.transpose(item_embed_list[i],0,1))
-        #     user_embd = torch.add(user_embd, u_e, alpha = ratio)
-        #     item_embd = torch.add(item_embd, i_e, alpha = ratio)
-        
-        # Trial #2
-        # I tried to assign local cluster embedding to full-size embedding / not working
-        # for i in range(1,self.num_model):
-        #     self.user_local_embedding_aggregate[self.idx_list[0][i-1],:]=user_embed_list[i]
-        #     self.item_local_embedding_aggregate[self.idx_list[1][i-1],:]=item_embed_list[i]
-        #     ratio = float(item_embed_list[i].shape[0]/origin_item_embd.shape[0])
-        #     user_embd =  torch.add(user_embd ,self.user_local_embedding_aggregate, alpha = ratio)
-        #     item_embd =  torch.add(item_embd ,self.item_local_embedding_aggregate, alpha = ratio)
-            
+        final_u = torch.add(user_embd, local_user_embd)
+        final_e = torch.add(item_embd, local_item_embd)
 
         
-        return user_embd, item_embd
+        return final_u, final_e
+        
   
     
 class NGCF(nn.Module):
@@ -147,9 +111,13 @@ class NGCF(nn.Module):
         
         for i in range(self.n_layers):
             
-            side_embeddings = torch.sparse.mm(adj, ego_embeddings)
+            side_embeddings = torch.matmul(adj, ego_embeddings)
+            # side_embeddings = torch.sparse.mm(adj, ego_embeddings)
+            
             sum_embeddings = F.leaky_relu(self.GC_Linear_list[i](side_embeddings))
+
             bi_embeddings = torch.mul(ego_embeddings, side_embeddings)
+            
             bi_embeddings = F.leaky_relu(self.Bi_Linear_list[i](bi_embeddings))
             ego_embeddings = sum_embeddings + bi_embeddings
             ego_embeddings = self.dropout_list[i](ego_embeddings)

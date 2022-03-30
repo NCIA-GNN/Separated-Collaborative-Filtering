@@ -79,7 +79,7 @@ class Model_Wrapper(object):
         print('----self.alg_type is {}----'.format(self.alg_type))
         if self.scc == 2:
             self.model=UCR(self.s_norm_adj_list, self.incd_mat_list , self.idx_list, self.alg_type, self.emb_dim, self.weight_size, self.mess_dropout)
-            # self.model=multi_NGCF(self.s_norm_adj_list, self.incd_mat_list , self.idx_list, self.emb_dim, self.weight_size, self.mess_dropout)
+            
             
         else : 
             if self.alg_type in ['ngcf']:
