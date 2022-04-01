@@ -144,6 +144,20 @@ class Model_Wrapper(object):
                 
             self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(args.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
             run=wandb.init(project=self.wandb_proj_name,entity='ncia-gnn',name=self.name)
+
+            wandb.config.update = {                
+                   'embed_size':args.embed_size,
+                   'batch_size':args.batch_size,
+                   "regs": args.regs,
+                   'lr':args.lr,
+                   'scc':args.scc,
+                   'N':args.N,
+                   'cl_num':args.cl_num,
+                   'alg_type':args.alg_type,
+                
+            }
+
+
         for epoch in range(args.epoch):
             t1 = time()
             loss, mf_loss, emb_loss, reg_loss = 0., 0., 0., 0.
@@ -234,15 +248,7 @@ class Model_Wrapper(object):
                                'precision' : ret['precision'][0], 
                                'hit_ratio' : ret['hit_ratio'][0], 
                                'ndcg' : ret['ndcg'][0], 
-                               
-                               'embed_size':args.embed_size,
-                               'batch_size':args.batch_size,
-                               "regs": args.regs,
-                               'lr':args.lr,
-                               'scc':args.scc,
-                               'N':args.N,
-                               'cl_num':args.cl_num,
-                               'alg_type':args.alg_type
+
                               })
             cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
                                                                         stopping_step, expected_order='acc',
