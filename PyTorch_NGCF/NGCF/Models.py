@@ -31,18 +31,31 @@ class UCR(nn.Module):
         
         self.local_user_embeddings = []
         self.local_item_embeddings =[]
+        self.alpha_u = nn.Parameter(torch.ones(1))
+        self.alpha_i = nn.Parameter(torch.ones(1))
+        self.W_ratio_u = nn.Embedding(self.incd_mat_list[0].shape[0], self.final_weight_dim)
+        self.W_ratio_i = nn.Embedding(self.incd_mat_list[0].shape[1], self.final_weight_dim)
+    
         
+    
         for i in range(self.num_model):
             n_users,n_items = self.incd_mat_list[i].shape[0], self.incd_mat_list[i].shape[1]
-            self.model_list.append(NGCF(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
+            if self.alg_type in ['ngcf' ,'NGCF']:
+                self.model_list.append(NGCF(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
+            elif self.alg_type in ['mf' ,'MF']:
+                self.model_list.append(MF(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
+            elif self.alg_type in ['lightgcn' ,'LightGCN']:
+                self.model_list.append(LightGCN(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
             
             if i>=1:             
                 
                 with torch.no_grad():
                     self.local_user_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[0], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
                     self.local_item_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
-        
-            
+        self._init_weight_()
+    def _init_weight_(self):
+        nn.init.xavier_uniform_(self.W_ratio_u.weight)
+        nn.init.xavier_uniform_(self.W_ratio_i.weight)
 
     def forward(self, s_norm_adj_list):
         
@@ -59,22 +72,23 @@ class UCR(nn.Module):
         with torch.no_grad():
             for i in range(1,self.num_model):
                 ratio = float(item_embed_list[i].shape[0]/item_embd.shape[0])
-                # self.local_user_embeddings[i-1] = self.local_user_embeddings[i-1] + 1 -1
-                # self.local_item_embeddings[i-1] = self.local_item_embeddings[i-1] + 1 -1
-                # self.local_user_embeddings[i-1].index_add_(0,torch.LongTensor(self.idx_list[0][i-1]).cuda(),user_embed_list[i].cuda())
-                # self.local_item_embeddings[i-1].index_add_(0,torch.LongTensor(self.idx_list[1][i-1]).cuda(),item_embed_list[i].cuda())
+                # self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=ratio*user_embed_list[i]
+                # self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=ratio*item_embed_list[i]
                 self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
                 self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
-
         local_user_embd = torch.sum(torch.stack(self.local_user_embeddings, dim=2),dim=2)
         local_item_embd = torch.sum(torch.stack(self.local_item_embeddings, dim=2),dim=2)
         
         
-        final_u = torch.add(user_embd, local_user_embd)
-        final_e = torch.add(item_embd, local_item_embd)
+        # final_u = torch.add(user_embd, local_user_embd)
+        # final_i = torch.add(item_embd, local_item_embd)
+        # final_u = user_embd + self.alpha_u * local_user_embd
+        # final_i = item_embd + self.alpha_i * local_item_embd
+        final_u = user_embd + torch.mul(self.W_ratio_u.weight , local_user_embd)
+        final_i = item_embd + torch.mul(self.W_ratio_i.weight , local_item_embd)
 
         
-        return final_u, final_e
+        return final_u, final_i
         
   
     
@@ -160,7 +174,9 @@ class LightGCN(nn.Module):
     def forward(self, adj):
         ego_embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
         all_embeddings = [ego_embeddings]
-        
+        '''
+        Not Yet implemented
+        '''
         for i in range(self.n_layers):
             side_embeddings = torch.sparse.mm(adj, ego_embeddings)
             sum_embeddings = F.leaky_relu(self.GC_Linear_list[i](side_embeddings))

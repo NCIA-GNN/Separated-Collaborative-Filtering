@@ -62,5 +62,7 @@ def parse_args():
                         help='the number of cluster')
     parser.add_argument('--cl_num', type=int, default=0,
                         help='select cluster')
+    parser.add_argument('--wandb', type=bool, default=True,
+                        help='wandb record')
 
     return parser.parse_args()
