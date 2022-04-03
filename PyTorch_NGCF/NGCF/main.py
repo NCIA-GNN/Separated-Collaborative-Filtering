@@ -139,7 +139,7 @@ class Model_Wrapper(object):
         print(f"Number of Intereractions : {data_generator.n_train}")
         if self.wandb:
             if args.scc == 2:
-                args.N=1
+                
                 args.cl_num=0
                 
             self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(args.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
@@ -286,7 +286,10 @@ class Model_Wrapper(object):
                       '\t'.join(['%.5f' % r for r in hit[idx]]),
                       '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
         print(final_perf)
-        
+        wandb.run.summary["best_recall"] = recs[idx][0]
+        wandb.run.summary["best_ndcg"] = ndcgs[idx][0]
+        wandb.run.summary["best_precision"] = pres[idx][0]
+        wandb.run.summary["best_hit"] = hit[idx][0]
         # Benchmarking: time consuming
         avg_time = sum(training_time_list) / len(training_time_list)
         time_consume = "Benchmarking time consuming: average {}s per epoch".format(avg_time)

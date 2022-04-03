@@ -33,8 +33,7 @@ class UCR(nn.Module):
         self.local_item_embeddings =[]
         self.alpha_u = nn.Parameter(torch.ones(1))
         self.alpha_i = nn.Parameter(torch.ones(1))
-        self.W_ratio_u = nn.Embedding(self.incd_mat_list[0].shape[0], self.final_weight_dim)
-        self.W_ratio_i = nn.Embedding(self.incd_mat_list[0].shape[1], self.final_weight_dim)
+        
     
         
     
@@ -43,7 +42,10 @@ class UCR(nn.Module):
             if self.alg_type in ['ngcf' ,'NGCF']:
                 self.model_list.append(NGCF(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
             elif self.alg_type in ['mf' ,'MF']:
-                self.model_list.append(MF(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
+                
+                self.model_list.append(MF(n_users, n_items, self.embedding_dim))
+                self.final_weight_dim = self.embedding_dim
+                
             elif self.alg_type in ['lightgcn' ,'LightGCN']:
                 self.model_list.append(LightGCN(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
             
@@ -52,6 +54,10 @@ class UCR(nn.Module):
                 with torch.no_grad():
                     self.local_user_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[0], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
                     self.local_item_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
+        
+        self.W_ratio_u = nn.Embedding(self.incd_mat_list[0].shape[0], self.final_weight_dim)
+        self.W_ratio_i = nn.Embedding(self.incd_mat_list[0].shape[1], self.final_weight_dim)
+        
         self._init_weight_()
     def _init_weight_(self):
         nn.init.xavier_uniform_(self.W_ratio_u.weight)
