@@ -13,6 +13,8 @@ from sklearn.cluster import SpectralCoclustering
 import warnings
 import pandas as pd
 import os
+
+import torch.utils.data as data     # updated 0406
 warnings.filterwarnings('ignore')
 
 class Data(object):
@@ -234,15 +236,24 @@ class Data(object):
             
         return users, pos_items, neg_items
 
-    def sample_all_users_pos_items(self):
+    # def sample_all_users_pos_items(self):
+    #     self.all_train_users = []
+
+    #     self.all_train_pos_items = []
+    #     for u in self.exist_users:
+    #         self.all_train_users += [u] * len(self.train_items[u])
+    #         self.all_train_pos_items += self.train_items[u]
+
+    def epoch_sample(self):
+### updated 0406, error fixed
         self.all_train_users = []
 
         self.all_train_pos_items = []
         for u in self.exist_users:
             self.all_train_users += [u] * len(self.train_items[u])
             self.all_train_pos_items += self.train_items[u]
+###
 
-    def epoch_sample(self):
         def sample_neg_items_for_u(u, num):
             neg_items = []
             while True:
@@ -256,10 +267,10 @@ class Data(object):
         for u in self.all_train_users:
             neg_items += sample_neg_items_for_u(u,1)
 
-        perm = np.random.permutation(len(self.all_train_users))
-        users = np.array(self.all_train_users)[perm]
-        pos_items = np.array(self.all_train_pos_items)[perm]
-        neg_items = np.array(neg_items)[perm]
+        perm = np.random.permutation(len(self.all_train_users)) # len(perm) == all train user-item interactions, permuting index
+        users = np.array(self.all_train_users)[perm] # permuted users
+        pos_items = np.array(self.all_train_pos_items)[perm] # permuted pos_items
+        neg_items = np.array(neg_items)[perm] # permuted neg_items
         return users, pos_items, neg_items
 
     def get_num_users_items(self):
