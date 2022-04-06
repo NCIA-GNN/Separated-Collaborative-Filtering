@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.sparse as sparse
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
+
 import os
 import sys
 import datetime
@@ -58,9 +58,7 @@ class Model_Wrapper(object):
         self.weight_size = eval(args.layer_size)
         self.n_layers = len(self.weight_size)
 
-         # code for wandb    
-        self.wandb = data_config['wandb']
-        self.wandb_proj_name = data_config['wandb_proj_name']
+
         self.model_type += '_%s_%s_l%d' % (self.adj_type, self.alg_type, self.n_layers)
 
         self.regs = eval(args.regs)
@@ -137,39 +135,27 @@ class Model_Wrapper(object):
         n_users = data_generator.n_users
         print(f"Number of Users : {n_users}")
         print(f"Number of Intereractions : {data_generator.n_train}")
-        if self.wandb:
-            if args.scc == 2:
-                
-                args.cl_num=0
-                
-            self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(args.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
-            run=wandb.init(project=self.wandb_proj_name,entity='ncia-gnn',name=self.name)
-
-            wandb.config.update = {                
-                   'embed_size':args.embed_size,
-                   'batch_size':args.batch_size,
-                   "regs": args.regs,
-                   'lr':args.lr,
-                   'scc':args.scc,
-                   'N':args.N,
-                   'cl_num':args.cl_num,
-                   'alg_type':args.alg_type,
-                
-            }
-
-
         for epoch in range(args.epoch):
             t1 = time()
             loss, mf_loss, emb_loss, reg_loss = 0., 0., 0., 0.
-            n_batch = data_generator.n_train // args.batch_size + 1
+            # n_batch = data_generator.n_train // args.batch_size + 1 # 0406
             f_time, b_time, loss_time, opt_time, clip_time, emb_time = 0., 0., 0., 0., 0., 0.
             sample_time = 0.
             cuda_time = 0.
+
+            all_users, all_pos_items, all_neg_items = data_generator.epoch_sample() # 0406
+            n_batch = len(all_users) // args.batch_size + 1
+
             for idx in range(n_batch):
                 self.model.train()
                 self.optimizer.zero_grad()
                 sample_t1 = time()
-                users, pos_items, neg_items = data_generator.sample()
+                # users, pos_items, neg_items = data_generator.sample() # 0406
+                if idx + 1 != n_batch: # 0406
+                    users, pos_items, neg_items = all_users[idx * args.batch_size : (idx + 1) * args.batch_size], all_pos_items[idx * args.batch_size : (idx + 1) * args.batch_size], all_neg_items[idx * args.batch_size : (idx + 1) * args.batch_size]
+                else: # 0406
+                    users, pos_items, neg_items = all_users[idx * args.batch_size : ], all_pos_items[idx * args.batch_size : ], all_neg_items[idx * args.batch_size : ]
+
                 sample_time += time() - sample_t1
                 if self.scc == 2:
                     ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
@@ -191,7 +177,7 @@ class Model_Wrapper(object):
                 batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss
 
                 batch_loss.backward()
-                
+                # batch_loss.backward(retain_graph=True)
                 self.optimizer.step()
 
                 loss += float(batch_loss)
@@ -239,20 +225,9 @@ class Model_Wrapper(object):
                             ret['precision'][0], ret['precision'][-1], ret['hit_ratio'][0], ret['hit_ratio'][-1],
                             ret['ndcg'][0], ret['ndcg'][-1])
                 print(perf_str)
-                if self.wandb:
-                    wandb.log({'train_loss':loss,
-                               'mf_loss':mf_loss,
-                               'emb_loss':emb_loss,
-                               'reg_loss':reg_loss,
-                               'recall' : ret['recall'][0], 
-                               'precision' : ret['precision'][0], 
-                               'hit_ratio' : ret['hit_ratio'][0], 
-                               'ndcg' : ret['ndcg'][0], 
-
-                              })
             cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
                                                                         stopping_step, expected_order='acc',
-                                                                        flag_step=10)
+                                                                        flag_step=5)
 
             # *********************************************************
             # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
@@ -286,10 +261,7 @@ class Model_Wrapper(object):
                       '\t'.join(['%.5f' % r for r in hit[idx]]),
                       '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
         print(final_perf)
-        wandb.run.summary["best_recall"] = recs[idx][0]
-        wandb.run.summary["best_ndcg"] = ndcgs[idx][0]
-        wandb.run.summary["best_precision"] = pres[idx][0]
-        wandb.run.summary["best_hit"] = hit[idx][0]
+        
         # Benchmarking: time consuming
         avg_time = sum(training_time_list) / len(training_time_list)
         time_consume = "Benchmarking time consuming: average {}s per epoch".format(avg_time)
@@ -380,8 +352,6 @@ if __name__ == '__main__':
     
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
-    config['wandb']=args.wandb
-    config['wandb_proj_name']=args.dataset
     if args.scc==2 : 
         config['norm_adj_list'] = norm_adj_list
         config['idx_list'] = idx_list
