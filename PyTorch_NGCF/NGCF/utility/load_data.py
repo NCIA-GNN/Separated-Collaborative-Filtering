@@ -373,6 +373,13 @@ class Data(object):
                 chenge_points_row.append(i)
             if sorted_row[i]!=sorted_row[i+1]:
                 chenge_points_row.append(i+1)
+        sorted_col = sorted(bicl.column_labels_)
+        chenge_points_col= []
+        for i in range(len(sorted_col)-1):
+            if i ==0:
+                chenge_points_col.append(i)
+            if sorted_row[i]!=sorted_row[i+1]:
+                chenge_points_col.append(i+1)
         adj_matrix_list = []
         incd_matrix_list = []
         idx_list = []
@@ -384,8 +391,11 @@ class Data(object):
                 # Get new incidence matrix from user listbelongs to first cluster (ignore clustered items)
                 if sample_cluster_num == (N-1) : 
                     sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:]) 
+                    # without noise
+#                     sample_col_idx = sorted(col_idx[chenge_points_col[sample_cluster_num]:]) 
                 else : 
                     sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
+#                     sample_col_idx = sorted(col_idx[chenge_points_col[sample_cluster_num]:chenge_points_col[sample_cluster_num+1]])
                 item_list = []            
                 for u in sample_row_idx:
                     for i in self.train_items[u]:
@@ -395,7 +405,9 @@ class Data(object):
                             item_list.append(i)
                     except : 
                         continue
+                # noise version
                 sample_col_idx = sorted(list(set(item_list)))
+                
                 R = R[sample_row_idx,:]
                 R = R[:,sample_col_idx]            
 

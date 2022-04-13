@@ -78,8 +78,6 @@ class UCR(nn.Module):
         with torch.no_grad():
             for i in range(1,self.num_model):
                 ratio = float(item_embed_list[i].shape[0]/item_embd.shape[0])
-                # self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=ratio*user_embed_list[i]
-                # self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=ratio*item_embed_list[i]
                 self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
                 self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
         local_user_embd = torch.sum(torch.stack(self.local_user_embeddings, dim=2),dim=2)
