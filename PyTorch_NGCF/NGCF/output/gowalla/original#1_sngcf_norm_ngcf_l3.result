@@ -1,5 +1,0 @@
-datetime: 2022-03-12 22:05:59.252790
-embed_size=64, lr=0.00010, mess_dropout=[0.1,0.1,0.1], regs=[1e-5], adj_type=norm
-	Best Iter=[49]@[14825.0]	recall=[0.15610	0.21949	0.26459	0.30117	0.33262], precision=[0.04785	0.03391	0.02745	0.02358	0.02091], hit=[0.54320	0.64884	0.70648	0.74576	0.77641], ndcg=[0.23085	0.26942	0.29380	0.31228	0.32756]
-	Benchmarking time consuming: average 22.561478535175322s per epoch
-
