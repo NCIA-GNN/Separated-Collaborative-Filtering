@@ -539,7 +539,7 @@ def sym_normalized_adj(adj):
     d_inv_row[np.isinf(d_inv_row)] = 0.
     d_inv_col[np.isinf(d_inv_col)] = 0.
     norm_adj = np.matmul(np.matmul(np.diag(d_inv_row),adj),np.diag(d_inv_col))
-    return sp.coo_matrix(norm_adj)
+    return sp.coo_matrix(norm_adj) # 실제로는 Adjacency Matrix가 아님!! (Incidence matrix임...
 
 def normalized_adj_single(adj):
     rowsum = np.array(adj.sum(1))
