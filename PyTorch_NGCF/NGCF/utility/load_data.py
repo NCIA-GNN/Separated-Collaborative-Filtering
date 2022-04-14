@@ -531,7 +531,16 @@ class Data(object):
 
             # return adj_mat, norm_adj_mat, mean_adj_mat, incid_mat
     
-    
+def sym_normalized_adj(adj):
+    rowsum = np.array(adj.sum(1))
+    colsum = np.array(adj.sum(0))
+    d_inv_row = np.power(rowsum, -0.5).flatten()
+    d_inv_col = np.power(colsum, -0.5).flatten()
+    d_inv_row[np.isinf(d_inv_row)] = 0.
+    d_inv_col[np.isinf(d_inv_col)] = 0.
+    norm_adj = np.matmul(np.matmul(np.diag(d_inv_row),adj),np.diag(d_inv_col))
+    return sp.coo_matrix(norm_adj)
+
 def normalized_adj_single(adj):
     rowsum = np.array(adj.sum(1))
 
