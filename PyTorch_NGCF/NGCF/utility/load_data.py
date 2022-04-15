@@ -193,12 +193,12 @@ class Data(object):
         print('refresh negative pools', time() - t1)
 
     def sample(self):
-
         if self.batch_size <= self.n_users:
             users = rd.sample(self.exist_users, self.batch_size)
         else:
             users = [rd.choice(self.exist_users) for _ in range(self.batch_size)]
-        
+        # users = self.exist_users[:]
+
         def sample_pos_items_for_u(u, num):
             pos_items = self.train_items[u]
             n_pos_items = len(pos_items)
@@ -207,7 +207,7 @@ class Data(object):
                 if len(pos_batch) == num: break
                 pos_id = np.random.randint(low=0, high=n_pos_items, size=1)[0]
                 pos_i_id = pos_items[pos_id]
-                
+
                 if pos_i_id not in pos_batch:
                     pos_batch.append(pos_i_id)
             return pos_batch
@@ -216,12 +216,9 @@ class Data(object):
             neg_items = []
             while True:
                 if len(neg_items) == num: break
-#                 neg_id = np.random.choice(self.item_list , size=1)[0]
                 neg_id = np.random.randint(low=0, high=self.n_items, size=1)[0]
-                
                 if neg_id not in self.train_items[u] and neg_id not in neg_items:
                     neg_items.append(neg_id)
-            
             return neg_items
 
         def sample_neg_items_for_u_from_pools(u, num):
@@ -229,31 +226,21 @@ class Data(object):
             return rd.sample(neg_items, num)
 
         pos_items, neg_items = [], []
-        
         for u in users:
             pos_items += sample_pos_items_for_u(u, 1)
             neg_items += sample_neg_items_for_u(u, 1)
-            
+            # neg_items += sample_neg_items_for_u(u, 3)
         return users, pos_items, neg_items
 
-    # def sample_all_users_pos_items(self):
-    #     self.all_train_users = []
-
-    #     self.all_train_pos_items = []
-    #     for u in self.exist_users:
-    #         self.all_train_users += [u] * len(self.train_items[u])
-    #         self.all_train_pos_items += self.train_items[u]
-
-    def epoch_sample(self):
-### updated 0406, error fixed
+    def sample_all_users_pos_items(self):
         self.all_train_users = []
 
         self.all_train_pos_items = []
         for u in self.exist_users:
             self.all_train_users += [u] * len(self.train_items[u])
             self.all_train_pos_items += self.train_items[u]
-###
 
+    def epoch_sample(self):
         def sample_neg_items_for_u(u, num):
             neg_items = []
             while True:
@@ -267,10 +254,10 @@ class Data(object):
         for u in self.all_train_users:
             neg_items += sample_neg_items_for_u(u,1)
 
-        perm = np.random.permutation(len(self.all_train_users)) # len(perm) == all train user-item interactions, permuting index
-        users = np.array(self.all_train_users)[perm] # permuted users
-        pos_items = np.array(self.all_train_pos_items)[perm] # permuted pos_items
-        neg_items = np.array(neg_items)[perm] # permuted neg_items
+        perm = np.random.permutation(len(self.all_train_users))
+        users = np.array(self.all_train_users)[perm]
+        pos_items = np.array(self.all_train_pos_items)[perm]
+        neg_items = np.array(neg_items)[perm]
         return users, pos_items, neg_items
 
     def get_num_users_items(self):
@@ -378,7 +365,7 @@ class Data(object):
         for i in range(len(sorted_col)-1):
             if i ==0:
                 chenge_points_col.append(i)
-            if sorted_row[i]!=sorted_row[i+1]:
+            if sorted_col[i]!=sorted_col[i+1]:
                 chenge_points_col.append(i+1)
         adj_matrix_list = []
         incd_matrix_list = []
@@ -389,24 +376,24 @@ class Data(object):
                 sample_cluster_num = n
 
                 # Get new incidence matrix from user listbelongs to first cluster (ignore clustered items)
+                # without noise
                 if sample_cluster_num == (N-1) : 
                     sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:]) 
-                    # without noise
-#                     sample_col_idx = sorted(col_idx[chenge_points_col[sample_cluster_num]:]) 
+                    sample_col_idx = sorted(col_idx[chenge_points_col[sample_cluster_num]:]) 
                 else : 
                     sample_row_idx = sorted(row_idx[chenge_points_row[sample_cluster_num]:chenge_points_row[sample_cluster_num+1]])
-#                     sample_col_idx = sorted(col_idx[chenge_points_col[sample_cluster_num]:chenge_points_col[sample_cluster_num+1]])
-                item_list = []            
-                for u in sample_row_idx:
-                    for i in self.train_items[u]:
-                        item_list.append(i)
-                    try :
-                        for i in self.test_set[u]:
-                            item_list.append(i)
-                    except : 
-                        continue
+                    sample_col_idx = sorted(col_idx[chenge_points_col[sample_cluster_num]:chenge_points_col[sample_cluster_num+1]])
                 # noise version
-                sample_col_idx = sorted(list(set(item_list)))
+                # item_list = []            
+                # for u in sample_row_idx:
+                #     for i in self.train_items[u]:
+                #         item_list.append(i)
+                #     try :
+                #         for i in self.test_set[u]:
+                #             item_list.append(i)
+                #     except : 
+                #         continue
+                # sample_col_idx = sorted(list(set(item_list)))
                 
                 R = R[sample_row_idx,:]
                 R = R[:,sample_col_idx]            
@@ -529,7 +516,6 @@ class Data(object):
 
 
 
-            # return adj_mat, norm_adj_mat, mean_adj_mat, incid_mat
     
 def sym_normalized_adj(adj):
     rowsum = np.array(adj.sum(1))
@@ -539,7 +525,7 @@ def sym_normalized_adj(adj):
     d_inv_row[np.isinf(d_inv_row)] = 0.
     d_inv_col[np.isinf(d_inv_col)] = 0.
     norm_adj = np.matmul(np.matmul(np.diag(d_inv_row),adj),np.diag(d_inv_col))
-    return sp.coo_matrix(norm_adj) 
+    return norm_adj.tocoo()
 
 def normalized_adj_single(adj):
     rowsum = np.array(adj.sum(1))

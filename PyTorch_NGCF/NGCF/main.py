@@ -95,13 +95,9 @@ class Model_Wrapper(object):
                 raise Exception('Dont know which model to train')
             
         self.model = self.model.cuda()
-        # self.model = nn.DataParallel(self.model)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-
         self.lr_scheduler = self.set_lr_scheduler()
         
-#         for name, param in self.model.named_parameters():
-#             print(name, ' ', param.size())
 
     def set_lr_scheduler(self):
         fac = lambda epoch: 0.96 ** (epoch / 50)
