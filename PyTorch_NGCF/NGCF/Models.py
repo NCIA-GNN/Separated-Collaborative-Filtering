@@ -40,6 +40,7 @@ class UCR(nn.Module):
                 
             elif self.alg_type in ['lightgcn' ,'LightGCN']:
                 self.model_list.append(LightGCN(n_users, n_items, self.embedding_dim, self.weight_size, self.dropout_list))
+                self.final_weight_dim = self.embedding_dim
             
             if i>=1:             
                 with torch.no_grad():
@@ -139,15 +140,6 @@ class LightGCN(nn.Module):
         self.embedding_dim = embedding_dim
         self.weight_size = weight_size
         self.n_layers = len(self.weight_size)
-        self.dropout_list = nn.ModuleList()
-        self.GC_Linear_list = nn.ModuleList()
-        self.Bi_Linear_list = nn.ModuleList()
-
-        self.weight_size = [self.embedding_dim] + self.weight_size
-        for i in range(self.n_layers):
-            self.GC_Linear_list.append(nn.Linear(self.weight_size[i], self.weight_size[i+1]))
-            self.Bi_Linear_list.append(nn.Linear(self.weight_size[i], self.weight_size[i+1]))
-            self.dropout_list.append(nn.Dropout(dropout_list[i]))
 
         self.user_embedding = nn.Embedding(n_users, embedding_dim)
         self.item_embedding = nn.Embedding(n_items, embedding_dim)
@@ -159,26 +151,17 @@ class LightGCN(nn.Module):
         nn.init.xavier_uniform_(self.item_embedding.weight)
 
     def forward(self, adj):
-        ego_embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
-        all_embeddings = [ego_embeddings]
-        '''
-        Not Yet implemented
-        '''
+        all_emb = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        layer_embeddings  = [all_emb]
+
         for i in range(self.n_layers):
-            side_embeddings = torch.sparse.mm(adj, ego_embeddings)
-            sum_embeddings = F.leaky_relu(self.GC_Linear_list[i](side_embeddings))
-            bi_embeddings = torch.mul(ego_embeddings, side_embeddings)
-            bi_embeddings = F.leaky_relu(self.Bi_Linear_list[i](bi_embeddings))
-            ego_embeddings = sum_embeddings + bi_embeddings
-            ego_embeddings = self.dropout_list[i](ego_embeddings)
-
-            norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
-            all_embeddings += [norm_embeddings]
-
-        all_embeddings = torch.cat(all_embeddings, dim=1)
-        u_g_embeddings, i_g_embeddings = torch.split(all_embeddings, [self.n_users, self.n_items], dim=0)
+            all_emb = torch.sparse.mm(adj, all_emb)
+            layer_embeddings.append(all_emb)
+        layer_embeddings = torch.stack(layer_embeddings, dim=1)
+        final_embeddings = layer_embeddings.mean(dim=1)  # output is mean of all layers
+        users, items = torch.split(final_embeddings, [self.n_users, self.n_items])
         
-        return u_g_embeddings, i_g_embeddings
+        return users, items
 
 class MF(nn.Module):
     def __init__(self, n_users, n_items, embedding_dim):
