@@ -62,7 +62,27 @@ def parse_args():
                         help='the number of cluster')
     parser.add_argument('--cl_num', type=int, default=0,
                         help='select cluster')
-    parser.add_argument('--wandb', type=bool, default=True,
+    
+    
+    
+    
+    parser.add_argument('--cor_flag', type=int, default=1,
+                        help='Correlation matrix flag')
+    parser.add_argument('--corDecay', type=float, default=0.0,
+                        help='Distance Correlation Weight')
+    
+        
+    parser.add_argument('--n_layers', type=int, default=1,
+                        help='Layer numbers.')
+    parser.add_argument('--n_factors', type=int, default=4,
+                        help='Number of factors to disentangle the original embed-size representation.')
+    parser.add_argument('--n_iterations', type=int, default=2,
+                        help='Number of iterations to perform the routing mechanism.')
+    
+    parser.add_argument('--pick', type=int, default=0,
+                        help='O for no pick, 1 for pick')
+    parser.add_argument('--pick_scale', type=float, default=1e10,
+                        help='Scale')
+    parser.add_argument('--wandb', type=bool, default=False,
                         help='wandb record')
-
     return parser.parse_args()

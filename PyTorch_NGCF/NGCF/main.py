@@ -43,8 +43,13 @@ class Model_Wrapper(object):
                 self.s_norm_adj_list.append(s_norm_adj.cuda())
                 
         else : 
-            self.norm_adj = data_config['norm_adj']
-            self.norm_adj = self.sparse_mx_to_torch_sparse_tensor(self.norm_adj).float()
+            self.norm_adj_origin = data_config['norm_adj']
+            
+            self.norm_adj = self.sparse_mx_to_torch_sparse_tensor(self.norm_adj_origin).float()
+            data_config['norm_adj'] = self.norm_adj
+            # self.norm_adj_origin = self.norm_adj
+            # print(type(self.norm_adj_origin))
+            
             self.norm_adj = self.norm_adj.cuda()
         
             
@@ -60,6 +65,7 @@ class Model_Wrapper(object):
 
          # code for wandb    
         self.wandb = data_config['wandb']
+        
         self.wandb_proj_name = data_config['wandb_proj_name']
         self.model_type += '_%s_%s_l%d' % (self.adj_type, self.alg_type, self.n_layers)
 
@@ -80,7 +86,7 @@ class Model_Wrapper(object):
 
         print('----self.alg_type is {}----'.format(self.alg_type))
         if self.scc == 2:
-            self.model=UCR(self.s_norm_adj_list, self.incd_mat_list , self.idx_list, self.alg_type, self.emb_dim, self.weight_size, self.mess_dropout)
+            self.model=UCR(self.s_norm_adj_list, self.incd_mat_list , self.idx_list, self.alg_type, self.emb_dim, self.weight_size, self.mess_dropout,data_config, args)
             
             
         else : 
@@ -91,6 +97,13 @@ class Model_Wrapper(object):
                 self.model = MF(self.n_users, self.n_items, self.emb_dim)
             elif self.alg_type in ['lightgcn']:
                 self.model = LightGCN(self.n_users, self.n_items, self.emb_dim, self.weight_size, self.mess_dropout)
+            elif self.alg_type in ['dgcf']:
+                self.model = DGCF(self.n_users, self.n_items, data_config, args)
+            elif self.alg_type in ['ultragcn']:
+                self.model = UltraGCN(self.n_users, self.n_items, data_config, args, data_config['incd_mat'], 0,0)
+                self.lr = self.model.lr
+                self.batch_size = self.model.batch_size
+                
             else:
                 raise Exception('Dont know which model to train')
             
@@ -110,17 +123,23 @@ class Model_Wrapper(object):
 
     def load_model(self):
         self.model.load_state_dict(torch.load(self.weights_save_path))
-
+    
     def test(self, users_to_test, drop_flag=False, batch_test_flag=False):
         self.model.eval()
         with torch.no_grad():
-            if self.scc == 2:
-                ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+            if self.alg_type in ['dgcf'] :
+                ua_embeddings, ia_embeddings = self.model(self.norm_adj_origin)
+            if self.alg_type in ['ultragcn'] :
+                ua_embeddings, ia_embeddings = self.model(self.norm_adj)
                 
             else : 
-                ua_embeddings, ia_embeddings = self.model(self.norm_adj)
-            
-        result = test_torch(ua_embeddings, ia_embeddings, users_to_test)
+                if self.scc == 2:
+                    ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+
+                else : 
+                    ua_embeddings, ia_embeddings = self.model(self.norm_adj)
+
+            result = test_torch(ua_embeddings, ia_embeddings, users_to_test)
         
         return result
 
@@ -131,7 +150,7 @@ class Model_Wrapper(object):
         should_stop = False
         cur_best_pre_0 = 0.
 
-        n_batch = data_generator.n_train // args.batch_size + 1
+        n_batch = data_generator.n_train // self.batch_size + 1
         n_users = data_generator.n_users
         print(f"Number of Users : {n_users}")
         print(f"Number of Intereractions : {data_generator.n_train}")
@@ -140,12 +159,12 @@ class Model_Wrapper(object):
                 
                 args.cl_num=0
                 
-            self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(args.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
+            self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(self.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
             run=wandb.init(project=self.wandb_proj_name,entity='ncia-gnn',name=self.name)
 
             wandb.config.update = {                
                    'embed_size':args.embed_size,
-                   'batch_size':args.batch_size,
+                   'batch_size':self.batch_size,
                    "regs": args.regs,
                    'lr':args.lr,
                    'scc':args.scc,
@@ -159,46 +178,102 @@ class Model_Wrapper(object):
         for epoch in range(args.epoch):
             t1 = time()
             loss, mf_loss, emb_loss, reg_loss = 0., 0., 0., 0.
-            n_batch = data_generator.n_train // args.batch_size + 1
+            n_batch = data_generator.n_train // self.batch_size + 1
             f_time, b_time, loss_time, opt_time, clip_time, emb_time = 0., 0., 0., 0., 0., 0.
             sample_time = 0.
             cuda_time = 0.
+            # for DGCF
+            cor_batch_size = int(max(data_generator.n_users/n_batch, data_generator.n_items/n_batch))
+            
             for idx in range(n_batch):
                 self.model.train()
                 self.optimizer.zero_grad()
                 sample_t1 = time()
                 users, pos_items, neg_items = data_generator.sample()
+                
+                #for DGCF
+                cor_users, cor_items = data_generator.sample_cor_samples(data_generator.n_users, data_generator.n_items, cor_batch_size)
+                
                 sample_time += time() - sample_t1
-                if self.scc == 2:
-                    ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
-
-                else : 
-                    ua_embeddings, ia_embeddings = self.model(self.norm_adj)
-
-                u_g_embeddings = ua_embeddings[users]
-                pos_i_g_embeddings = ia_embeddings[pos_items]
-                neg_i_g_embeddings = ia_embeddings[neg_items]
-                batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
-                                                                              neg_i_g_embeddings)
                 
-
-                batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss
                 
+                batch_cor_loss = 0.0
+                
+                if self.alg_type in ['dgcf']:
+                    # batch_loss, batch_mf_loss, batch_emb_loss, batch_cor_loss = self.model(users, pos_items, neg_items,cor_users,cor_items)
+                    # u_g_embeddings, pos_i_g_embeddings, neg_i_g_embeddings, cor_u_g_embeddings, cor_i_g_embeddings = self.model(users, pos_items, neg_items,cor_users,cor_items)
+                    ua_embeddings, ia_embeddings = self.model(self.norm_adj_origin)
+                    u_g_embeddings = ua_embeddings[users]
+                    pos_i_g_embeddings = ia_embeddings[pos_items]
+                    neg_i_g_embeddings = ia_embeddings[neg_items]
+                    cor_u_g_embeddings = ua_embeddings[cor_users]
+                    cor_i_g_embeddings = ia_embeddings[cor_items]
+                    if args.corDecay < 1e-9:
+                        batch_cor_loss = torch.zeros(1).cuda()
+                    else:
+                        batch_cor_loss = args.corDecay *  self.cor_loss(cor_u_g_embeddings, cor_i_g_embeddings)
+                    batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
+                                                                                  neg_i_g_embeddings)
 
-                batch_loss.backward()
+                    batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss + batch_cor_loss
+                    
+                elif self.alg_type in ['ultragcn']:
+                    if self.scc == 2:
+                        ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+                    else : 
+                        ua_embeddings, ia_embeddings = self.model(self.norm_adj)
+                    users, pos_items, neg_items = data_generator.ultra_sampling((users, pos_items), data_generator.n_items, self.model.negative_num, data_generator.train_items, sampling_sift_pos=self.model.sampling_sift_pos)
+                    omega_weight = self.get_omegas(torch.tensor(users), torch.tensor(pos_items), torch.tensor(neg_items))
+                    u_g_embeddings = ua_embeddings[users]
+                    pos_i_g_embeddings = ia_embeddings[pos_items]
+                    neg_i_g_embeddings = ia_embeddings[neg_items]
+                    batch_loss = self.cal_loss_L(u_g_embeddings, pos_i_g_embeddings, neg_i_g_embeddings,omega_weight)
+                    batch_loss += self.model.gamma * self.norm_loss()
+                    batch_loss += self.model.lambda_ * self.cal_loss_I(users, pos_items, u_g_embeddings, ia_embeddings)
+                    
+        
+                else : # mf, ngcf, lightgcn
+                    if self.scc == 2:
+                        ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+
+                    else : 
+                        ua_embeddings, ia_embeddings = self.model(self.norm_adj)
+
+                    u_g_embeddings = ua_embeddings[users]
+                    pos_i_g_embeddings = ia_embeddings[pos_items]
+                    neg_i_g_embeddings = ia_embeddings[neg_items]
+                    batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
+                                                                                  neg_i_g_embeddings)
+
+                    batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss + batch_cor_loss
+                
+                if self.alg_type in ['dgcf']:
+                    batch_loss.backward(retain_graph=True)
+                else :                     
+                    batch_loss.backward()                
                 
                 self.optimizer.step()
+                if self.alg_type in ['ultragcn']:
+                    batch_loss = batch_loss / self.batch_size
+                    loss += float(batch_loss)    
+                else : 
+                    loss += float(batch_loss)
+                    mf_loss += float(batch_mf_loss)
+                    emb_loss += float(batch_emb_loss)
 
-                loss += float(batch_loss)
-
-                mf_loss += float(batch_mf_loss)
-                emb_loss += float(batch_emb_loss)
-                reg_loss += float(batch_reg_loss)
+                    try : 
+                        batch_reg_loss = batch_cor_loss
+                    except : 
+                        pass
+                    reg_loss += float(batch_reg_loss)
+                
 
 
             self.lr_scheduler.step()
-
-            del ua_embeddings, ia_embeddings, u_g_embeddings, neg_i_g_embeddings, pos_i_g_embeddings
+            try : 
+                del ua_embeddings, ia_embeddings, u_g_embeddings, neg_i_g_embeddings, pos_i_g_embeddings
+            except :
+                pass
 
 
             if math.isnan(loss) == True:
@@ -208,8 +283,8 @@ class Model_Wrapper(object):
             # print the test evaluation metrics each 10 epochs; pos:neg = 1:10.
             if (epoch + 1) % 10 != 0:
                 if args.verbose > 0 and epoch % args.verbose == 0:
-                    perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
-                        epoch, time() - t1, loss, mf_loss, emb_loss)
+                    perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f + %.5f]' % (
+                        epoch, time() - t1, loss, mf_loss, emb_loss, reg_loss)
                     training_time_list.append(time() - t1)
                     print(perf_str)
                 continue
@@ -282,10 +357,11 @@ class Model_Wrapper(object):
                       '\t'.join(['%.5f' % r for r in hit[idx]]),
                       '\t'.join(['%.5f' % r for r in ndcgs[idx]]))
         print(final_perf)
-        wandb.run.summary["best_recall"] = round(recs[idx][0],5)
-        wandb.run.summary["best_ndcg"] = round(ndcgs[idx][0],5)
-        wandb.run.summary["best_precision"] = round(pres[idx][0],5)
-        wandb.run.summary["best_hit"] = round(hit[idx][0],5)
+        if self.wandb:
+            wandb.run.summary["best_recall"] = round(recs[idx][0],5)
+            wandb.run.summary["best_ndcg"] = round(ndcgs[idx][0],5)
+            wandb.run.summary["best_precision"] = round(pres[idx][0],5)
+            wandb.run.summary["best_hit"] = round(hit[idx][0],5)
         # Benchmarking: time consuming
         avg_time = sum(training_time_list) / len(training_time_list)
         time_consume = "Benchmarking time consuming: average {}s per epoch".format(avg_time)
@@ -342,7 +418,126 @@ class Model_Wrapper(object):
         indices = np.mat([coo.row, coo.col]).transpose()
         return indices, coo.data, coo.shape
 
+    def cor_loss(self, cor_u_embeddings, cor_i_embeddings):
+        cor_loss = torch.zeros(1).cuda()
 
+        if args.cor_flag == 0:
+            return cor_loss
+        
+        ui_embeddings = torch.cat([cor_u_embeddings, cor_i_embeddings],0)
+        split_factor = int(args.embed_size/args.n_factors)
+        ui_factor_embeddings = torch.split(ui_embeddings, split_factor, 1)
+        
+        for i in range(0, args.n_factors-1):
+            x = ui_factor_embeddings[i].cuda()
+            y = ui_factor_embeddings[i+1].cuda()
+            cor_loss += self._create_distance_correlation(x, y)
+
+        cor_loss /= ((args.n_factors + 1.0) * args.n_factors/2)
+
+        return cor_loss
+    
+    def _create_distance_correlation(self, X1, X2):
+
+        def _create_centered_distance(X):
+            '''
+                Used to calculate the distance matrix of N samples
+            '''
+            # calculate the pairwise distance of X
+            # .... A with the size of [batch_size, embed_size/n_factors]
+            # .... D with the size of [batch_size, batch_size]
+            
+            X = X.cuda()
+            r = torch.sum(torch.square(X),1,keepdims=True)
+            D = torch.sqrt(torch.maximum(r - 2 * torch.matmul(X,X.t()) + r.t(), torch.tensor(0.0)) + 1e-8)
+
+            # # calculate the centered distance of X
+            # # .... D with the size of [batch_size, batch_size]
+            D = D - torch.mean(D,dim=0,keepdims=True)-torch.mean(D,dim=1,keepdims=True) \
+                + torch.mean(D)
+            return D
+        
+        def _create_distance_covariance(D1,D2):
+            #calculate distance covariance between D1 and D2
+            
+            n_samples =int(D1.shape[0])            
+            dcov = torch.sqrt(torch.maximum(torch.sum(D1 * D2) / (n_samples * n_samples), torch.tensor(0.0)) + 1e-8)
+            
+            return dcov
+
+        D1 = _create_centered_distance(X1)
+        D2 = _create_centered_distance(X2)
+        dcov_12 = _create_distance_covariance(D1,D2)
+        dcov_11 = _create_distance_covariance(D1,D1)
+        dcov_22 = _create_distance_covariance(D2,D2)
+
+        #calculate the distance correlation
+        dcor = dcov_12 / (torch.sqrt(torch.maximum(dcov_11 * dcov_22, torch.tensor(0.0))) + 1e-10)
+
+        return dcor
+    
+    def get_omegas(self, users, pos_items, neg_items):
+        device = self.model.get_device()
+        if self.model.w2 > 0:
+            pos_weight = torch.mul(self.model.constraint_mat['beta_uD'][users], self.model.constraint_mat['beta_iD'][pos_items]).to(device)
+            pow_weight = self.model.w1 + self.model.w2 * pos_weight
+        else:
+            pos_weight = self.model.w1 * torch.ones(len(pos_items)).to(device)
+        
+        # users = (users * self.item_num).unsqueeze(0)
+        # print(neg_items.shape)
+        # print(neg_items.size(1))
+        # print(neg_items.flatten())
+        if self.model.w4 > 0:
+            neg_weight = torch.mul(torch.repeat_interleave(self.model.constraint_mat['beta_uD'][users], neg_items.size(1)), self.model.constraint_mat['beta_iD'][neg_items.flatten()]).to(device)
+            neg_weight = self.model.w3 + self.model.w4 * neg_weight
+        else:
+            neg_weight = self.model.w3 * self.model.ones(neg_items.size(0) * neg_items.size(1)).to(device)
+
+
+        weight = torch.cat((pow_weight, neg_weight))
+        return weight
+
+
+    def cal_loss_L(self, user_embeds, pos_embeds, neg_embeds, omega_weight):
+        device = self.model.get_device()
+        
+      
+        pos_scores = (user_embeds * pos_embeds).sum(dim=-1) # batch_size
+        user_embeds = user_embeds.unsqueeze(1)
+        neg_scores = (user_embeds * neg_embeds).sum(dim=-1) # batch_size * negative_num
+
+        neg_labels = torch.zeros(neg_scores.size()).to(device)
+        neg_loss = F.binary_cross_entropy_with_logits(neg_scores, neg_labels, weight = omega_weight[len(pos_scores):].view(neg_scores.size()), reduction='none').mean(dim = -1)
+        
+        pos_labels = torch.ones(pos_scores.size()).to(device)
+        pos_loss = F.binary_cross_entropy_with_logits(pos_scores, pos_labels, weight = omega_weight[:len(pos_scores)], reduction='none')
+
+        loss = pos_loss + neg_loss * self.model.negative_weight
+      
+        return loss.sum()
+
+
+
+    def cal_loss_I(self, users, pos_items, user_embeds, item_embeds):
+        device = self.model.get_device()
+        # neighbor_embeds = self.model.item_embeds(self.model.ii_neighbor_mat[pos_items].to(device))    # len(pos_items) * num_neighbors * dim
+        neighbor_embeds = item_embeds[self.model.ii_neighbor_mat[pos_items].to(device)]    # len(pos_items) * num_neighbors * dim
+        sim_scores = self.model.ii_constraint_mat[pos_items].to(device)     # len(pos_items) * num_neighbors
+        user_embeds = user_embeds.unsqueeze(1)
+        
+        loss = -sim_scores * (user_embeds * neighbor_embeds).sum(dim=-1).sigmoid().log()
+      
+        # loss = loss.sum(-1)
+        return loss.sum()
+
+    def norm_loss(self):
+        loss = 0.0
+        for parameter in self.model.parameters():
+            loss += torch.sum(parameter ** 2)
+        return loss / 2
+    
+    
 def load_pretrained_data():
     pretrain_path = '%spretrain/%s/%s.npz' % (args.proj_path, args.dataset, 'embedding')
     try:
@@ -386,9 +581,11 @@ if __name__ == '__main__':
         if args.adj_type == 'norm':
 
             config['norm_adj'] = norm_adj
+            config['incd_mat'] = incd_mat
             print('use the normalized adjacency matrix')
         else:
             config['norm_adj'] = mean_adj + sp.eye(mean_adj.shape[0])
+            config['incd_mat'] = incd_mat
             print('use the mean adjacency matrix')
         # if args.scc == 1 :
         #     config['incd_mat'] = incd_mat

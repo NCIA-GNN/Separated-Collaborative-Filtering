@@ -13,7 +13,7 @@ from sklearn.cluster import SpectralCoclustering
 import warnings
 import pandas as pd
 import os
-
+import torch
 import torch.utils.data as data     # updated 0406
 warnings.filterwarnings('ignore')
 
@@ -191,6 +191,11 @@ class Data(object):
             pools = [rd.choice(neg_items) for _ in range(100)]
             self.neg_pools[u] = pools
         print('refresh negative pools', time() - t1)
+    def sample_cor_samples(self,n_users, n_items, cor_batch_size):
+
+        cor_users = rd.sample(list(range(n_users)),cor_batch_size)
+        cor_items = rd.sample(list(range(n_items)),cor_batch_size)
+        return cor_users, cor_items
 
     def sample(self):
         if self.batch_size <= self.n_users:
@@ -259,6 +264,27 @@ class Data(object):
         pos_items = np.array(self.all_train_pos_items)[perm]
         neg_items = np.array(neg_items)[perm]
         return users, pos_items, neg_items
+    def ultra_sampling(self, pos_train_data, item_num, neg_ratio, interacted_items, sampling_sift_pos):
+        neg_candidates = np.arange(item_num)
+
+        if sampling_sift_pos:
+            neg_items = []
+            for u in pos_train_data[0]:
+                probs = np.ones(item_num)
+                probs[interacted_items[u]] = 0
+                probs /= np.sum(probs)
+
+                u_neg_items = np.random.choice(neg_candidates, size = neg_ratio, p = probs, replace = True).reshape(1, -1)
+
+                neg_items.append(u_neg_items)
+
+            neg_items = np.concatenate(neg_items, axis = 0) 
+        else:
+            neg_items = np.random.choice(neg_candidates, (len(pos_train_data[0]), neg_ratio), replace = True)
+
+        neg_items = torch.from_numpy(neg_items)
+
+        return pos_train_data[0], pos_train_data[1], neg_items	# users, pos_items, neg_items
 
     def get_num_users_items(self):
         return self.n_users, self.n_items

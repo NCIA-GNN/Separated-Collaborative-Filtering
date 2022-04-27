@@ -58,14 +58,20 @@ def dcg_at_k(r, k, method=1):
     return 0.
 
 
-def ndcg_at_k(r, k, method=1):
+# def ndcg_at_k(r, k, method=1):
+def ndcg_at_k(r, k, all_pos_num, method=1, version = 1): # ver2
     """Score is normalized discounted cumulative gain (ndcg)
     Relevance is positive real values.  Can use binary
     as the previous methods.
     Returns:
         Normalized discounted cumulative gain
     """
-    dcg_max = dcg_at_k(sorted(r, reverse=True), k, method)
+    # dcg_max = dcg_at_k(sorted(r, reverse=True), k, method)
+    if version == 0:
+        dcg_max = dcg_at_k(sorted(r, reverse=True), k, method)
+    elif version == 1:
+        dcg_max = np.sum(1 / np.log2(np.arange(2, min(all_pos_num, k) + 2)))
+        
     if not dcg_max:
         return 0.
     return dcg_at_k(r, k, method) / dcg_max
