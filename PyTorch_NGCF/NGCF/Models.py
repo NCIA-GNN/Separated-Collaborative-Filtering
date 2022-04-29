@@ -28,7 +28,9 @@ class UCR(nn.Module):
         self.num_model = len(self.s_norm_adj_list) # clustered graph + full graph ex) 3 small cluster + 1 full graph = 4
         self.local_user_embeddings = []
         self.local_item_embeddings = []
-    
+        self.attention_1 = nn.ModuleList()        
+        self.attention_2 = nn.ModuleList()
+        
         for i in range(self.num_model):
             n_users,n_items = self.incd_mat_list[i].shape[0], self.incd_mat_list[i].shape[1]
             if self.alg_type in ['ngcf' ,'NGCF']:
@@ -64,14 +66,22 @@ class UCR(nn.Module):
                 self.constraint_mat = self.model_list[0].constraint_mat
                 self.ii_constraint_mat= self.model_list[0].ii_constraint_mat
                 self.ii_neighbor_mat= self.model_list[0].ii_neighbor_mat
+                # self.embedding_dim = ultra_config['embedding_dim']
             
             if i>=1:             
                 with torch.no_grad():
                     self.local_user_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[0], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
                     self.local_item_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
-        
+                local_user = self.incd_mat_list[i].shape[0]
+                local_item = self.incd_mat_list[i].shape[1]
+                self.attention_1.append(nn.Linear(self.final_weight_dim*2 , 1024))
+                self.attention_2.append(nn.Linear(1024 , 1))
         self.W_ratio_u = nn.Embedding(self.incd_mat_list[0].shape[0], self.final_weight_dim)
         self.W_ratio_i = nn.Embedding(self.incd_mat_list[0].shape[1], self.final_weight_dim)
+        
+        
+        
+        
         
         self._init_weight_()
     def _init_weight_(self):
@@ -93,16 +103,33 @@ class UCR(nn.Module):
         user_embd = user_embed_list[0]
         item_embd = item_embed_list[0]
 
-        with torch.no_grad():
-            for i in range(1,self.num_model):
-                self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
-                self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
+
+        # Ver 2
+        for i in range(1,self.num_model):
+            linear_u = self.attention_1[i-1]( torch.cat([user_embed_list[i], user_embd[self.idx_list[0][i-1]]],dim=1))
+            alpha_u = F.sigmoid(self.attention_2[i-1](F.sigmoid(linear_u)))
+            
+            linear_l = self.attention_1[i-1]( torch.cat([item_embed_list[i], item_embd[self.idx_list[1][i-1]]],dim=1))
+            alpha_l = F.sigmoid(self.attention_2[i-1](F.sigmoid(linear_l)))
+            
+            with torch.no_grad():
+                self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=alpha_u * user_embed_list[i]
+                self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=alpha_l * item_embed_list[i]
+                
         local_user_embd = torch.sum(torch.stack(self.local_user_embeddings, dim=2),dim=2)
         local_item_embd = torch.sum(torch.stack(self.local_item_embeddings, dim=2),dim=2)
-        final_u = user_embd + torch.mul(self.W_ratio_u.weight , local_user_embd)
-        final_i = item_embd + torch.mul(self.W_ratio_i.weight , local_item_embd)
+        return user_embd, item_embd, local_user_embd, local_item_embd
         
-        return final_u, final_i
+    
+        # Ver 1
+        # with torch.no_grad():
+        #     for i in range(1,self.num_model):
+        #         self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
+        #         self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
+    
+        # final_u = user_embd + torch.mul(self.W_ratio_u.weight , local_user_embd)
+        # final_i = item_embd + torch.mul(self.W_ratio_i.weight , local_item_embd)
+        # return final_u, final_i
         
   
     
@@ -657,6 +684,24 @@ def ultra_config_dict(dataset):
         data_config['sampling_sift_pos']=False
         data_config['lr']=1e-3
         data_config['batch_size']=1024
+        
+    elif dataset in ['ml-1m']:
+        data_config['w1']=1e-7
+        data_config['w2']=1
+        data_config['w3']=1e-87
+        data_config['w4']=1
+        data_config['negative_weight'] = 200
+        data_config['negative_num']=200
+        data_config['gamma'] =1e-4
+        data_config['lambda_'] =1e-3
+        data_config['initial_weight'] = 1e-3
+        data_config['ii_neighbor_num'] = 10
+        data_config['sampling_sift_pos']=False
+        data_config['lr']=1e-3
+        data_config['batch_size']=1024
+        # data_config['embedding_dim']=6
+        
+        
         
     return data_config
      

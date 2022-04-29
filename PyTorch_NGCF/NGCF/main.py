@@ -129,8 +129,11 @@ class Model_Wrapper(object):
         with torch.no_grad():
             if self.alg_type in ['dgcf'] :
                 ua_embeddings, ia_embeddings = self.model(self.norm_adj_origin)
-            if self.alg_type in ['ultragcn'] :
-                ua_embeddings, ia_embeddings = self.model(self.norm_adj)
+#             if self.alg_type in ['ultragcn'] :
+#                 if self.scc == 2 :
+#                     ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
+#                 else : 
+#                 ua_embeddings, ia_embeddings = self.model(self.norm_adj)
                 
             else : 
                 if self.scc == 2:
@@ -160,7 +163,7 @@ class Model_Wrapper(object):
                 args.cl_num=0
                 
             self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(self.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
-            run=wandb.init(project=self.wandb_proj_name,entity='ncia-gnn',name=self.name)
+            run=wandb.init(project=self.wandb_proj_name+'_paper',entity='ncia-gnn',name=self.name)
 
             wandb.config.update = {                
                    'embed_size':args.embed_size,
@@ -235,15 +238,46 @@ class Model_Wrapper(object):
                 else : # mf, ngcf, lightgcn
                     if self.scc == 2:
                         ua_embeddings, ia_embeddings = self.model(self.s_norm_adj_list)
-
+                        u_g_embeddings = ua_embeddings[users]
+                        pos_i_g_embeddings = ia_embeddings[pos_items]
+                        neg_i_g_embeddings = ia_embeddings[neg_items]
+                        batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
+                                                                                      neg_i_g_embeddings)
+                        # -----------------------------------------------------#
+                        # ua_embeddings_g, ia_embeddings_g, ua_embeddings_l, ia_embeddings_l= self.model(self.s_norm_adj_list)
+                        
+#                         user_idx = self.idx_list[0]  # [200, 300, 500]
+#                         item_idx = self.idx_list[1]  # [350, 200, 450]
+                        
+#                         def check_in_cluster(batch_idx, clustered_idx);
+#                             in_cluster = set.intersection(set(clustered_idx) , set(batch_idx))
+#                             out_cluster = set(batch_idx) - in_cluster
+#                             in_cluster = list(in_cluster)
+#                             out_cluster = list(out_cluster)
+#                             return in_cluster, out_cluster
+                        
+#                         in_user, out_user = check_in_cluster(users, user_idx)
+                        
+#                         u_g_embeddings_g_in = ua_embeddings_g[in_user]
+#                         pos_i_g_embeddings_g = ia_embeddings_g[pos_items]
+#                         neg_i_g_embeddings_g = ia_embeddings_g[neg_items]
+                        
+#                         u_g_embeddings_l = ua_embeddings_l[users] 
+#                         pos_i_g_embeddings_l = ia_embeddings_l[pos_items]
+#                         neg_i_g_embeddings_l = ia_embeddings_l[neg_items]
+                        
+                        # u_g_embeddings_g = ua_embeddings_g[users]
+                        # pos_i_g_embeddings_g = ia_embeddings_g[pos_items]
+                        # neg_i_g_embeddings_g = ia_embeddings_g[neg_items]
+                        # u_g_embeddings_l = ua_embeddings_l[users] 
+                        # pos_i_g_embeddings_l = ia_embeddings_l[pos_items]
+                        # neg_i_g_embeddings_l = ia_embeddings_l[neg_items]     
+ 
                     else : 
                         ua_embeddings, ia_embeddings = self.model(self.norm_adj)
-
-                    u_g_embeddings = ua_embeddings[users]
-                    pos_i_g_embeddings = ia_embeddings[pos_items]
-                    neg_i_g_embeddings = ia_embeddings[neg_items]
-                    batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
+                        batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
                                                                                   neg_i_g_embeddings)
+                    
 
                     batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss + batch_cor_loss
                 
@@ -270,6 +304,7 @@ class Model_Wrapper(object):
 
 
             self.lr_scheduler.step()
+            # self.optimizer.step()
             try : 
                 del ua_embeddings, ia_embeddings, u_g_embeddings, neg_i_g_embeddings, pos_i_g_embeddings
             except :
