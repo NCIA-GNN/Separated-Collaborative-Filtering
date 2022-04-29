@@ -41,6 +41,18 @@ class Model_Wrapper(object):
             for norm_adj in self.norm_adj_list:
                 s_norm_adj = self.sparse_mx_to_torch_sparse_tensor(norm_adj).float()
                 self.s_norm_adj_list.append(s_norm_adj.cuda())
+
+            if len(self.idx_list[0]) != len(self.idx_list[1]):
+                print('Warning : different number of clusters between Users & Items')
+            else:
+                num_iter = len(self.idx_list[0]) # number of local-clusters
+                self.u_dict_map = {i:[] for i in range(self.n_users)}
+                self.i_dict_map = {i:[] for i in range(self.n_items)}
+                for i in range(num_iter):
+                    for j in self.idx_list[0][i]:
+                        self.u_dict_map[j].append(i)
+                    for l in self.idx_list[1][i]:
+                        self.i_dict_map[l].append(i)
                 
         else : 
             self.norm_adj_origin = data_config['norm_adj']
@@ -146,6 +158,13 @@ class Model_Wrapper(object):
         
         return result
 
+    def map_idx2clu(self, users, pos_items, neg_items): # idx.type = list
+        clu_users = np.asarray([self.u_dict_map[i] for i in users])
+        clu_pos_items = np.asarray([self.i_dict_map[i] for i in pos_items])
+        clu_neg_items = np.asarray([self.i_dict_map[i] for i in neg_items])
+        # cluster numbers of indices
+        return clu_users, clu_pos_items, clu_neg_items # np.array
+
     def train(self):
         training_time_list = []
         loss_loger, pre_loger, rec_loger, ndcg_loger, hit_loger = [], [], [], [], []
@@ -241,38 +260,15 @@ class Model_Wrapper(object):
                         u_g_embeddings = ua_embeddings[users]
                         pos_i_g_embeddings = ia_embeddings[pos_items]
                         neg_i_g_embeddings = ia_embeddings[neg_items]
+                        # batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
+                        #                                                               neg_i_g_embeddings)
+                        #--------------------------#
+                        clu_users, clu_pos_items, clu_neg_items = self.map_idx2clu(users=users, pos_items=pos_items, neg_items=neg_items)
+                        check_u_pi = torch.tensor((clu_users == clu_pos_items).astype('int')).float().squeeze().cuda() # todo : without gradient
+                        check_u_ni = torch.tensor((clu_users == clu_neg_items).astype('int')).float().squeeze().cuda()
                         batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
-                                                                                      neg_i_g_embeddings)
-                        # -----------------------------------------------------#
-                        # ua_embeddings_g, ia_embeddings_g, ua_embeddings_l, ia_embeddings_l= self.model(self.s_norm_adj_list)
-                        
-#                         user_idx = self.idx_list[0]  # [200, 300, 500]
-#                         item_idx = self.idx_list[1]  # [350, 200, 450]
-                        
-#                         def check_in_cluster(batch_idx, clustered_idx);
-#                             in_cluster = set.intersection(set(clustered_idx) , set(batch_idx))
-#                             out_cluster = set(batch_idx) - in_cluster
-#                             in_cluster = list(in_cluster)
-#                             out_cluster = list(out_cluster)
-#                             return in_cluster, out_cluster
-                        
-#                         in_user, out_user = check_in_cluster(users, user_idx)
-                        
-#                         u_g_embeddings_g_in = ua_embeddings_g[in_user]
-#                         pos_i_g_embeddings_g = ia_embeddings_g[pos_items]
-#                         neg_i_g_embeddings_g = ia_embeddings_g[neg_items]
-                        
-#                         u_g_embeddings_l = ua_embeddings_l[users] 
-#                         pos_i_g_embeddings_l = ia_embeddings_l[pos_items]
-#                         neg_i_g_embeddings_l = ia_embeddings_l[neg_items]
-                        
-                        # u_g_embeddings_g = ua_embeddings_g[users]
-                        # pos_i_g_embeddings_g = ia_embeddings_g[pos_items]
-                        # neg_i_g_embeddings_g = ia_embeddings_g[neg_items]
-                        # u_g_embeddings_l = ua_embeddings_l[users] 
-                        # pos_i_g_embeddings_l = ia_embeddings_l[pos_items]
-                        # neg_i_g_embeddings_l = ia_embeddings_l[neg_items]     
- 
+                                                                                      neg_i_g_embeddings, check_u_pi=check_u_pi, check_u_ni=check_u_ni)
+
                     else : 
                         ua_embeddings, ia_embeddings = self.model(self.norm_adj)
                         batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
@@ -425,10 +421,32 @@ class Model_Wrapper(object):
         f2.close()
 
 
-    def bpr_loss(self, users, pos_items, neg_items):
-        pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
-        neg_scores = torch.sum(torch.mul(users, neg_items), dim=1)
+    # def bpr_loss(self, users, pos_items, neg_items): # old version
+    #     pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
+    #     neg_scores = torch.sum(torch.mul(users, neg_items), dim=1)
 
+    #     regularizer = 1./2*(users**2).sum() + 1./2*(pos_items**2).sum() + 1./2*(neg_items**2).sum()
+    #     regularizer = regularizer / self.batch_size
+
+    #     maxi = F.logsigmoid(pos_scores - neg_scores)
+    #     mf_loss = -torch.mean(maxi)
+
+    #     emb_loss = self.decay * regularizer
+    #     reg_loss = 0.0
+    #     return mf_loss, emb_loss, reg_loss
+    def bpr_loss(self, users, pos_items, neg_items, check_u_pi, check_u_ni): # 0429 version, todo : without gradient for some tensors
+        '''
+        new bpr loss, check whether in-cluster or out-cluster
+        '''
+        # todo : 'masking zeros' or 'use global embeddings as local embeddings for out-cluster pairs'
+        checking_u_pi = torch.cat([check_u_pi.unsqueeze(dim=0).T for _ in range(int(users.shape[1]/2))], dim = 1)
+        masking_pi = torch.cat((torch.ones_like(checking_u_pi).cuda(), checking_u_pi), dim = 1)
+        checking_u_ni = torch.cat([check_u_ni.unsqueeze(dim=0).T for _ in range(int(users.shape[1]/2))], dim = 1)
+        masking_ni = torch.cat((torch.ones_like(checking_u_ni).cuda(), checking_u_ni), dim = 1)
+        pos_scores = torch.sum(torch.mul(torch.mul(users, masking_pi), torch.mul(pos_items, masking_pi)), dim=1)
+        neg_scores = torch.sum(torch.mul(torch.mul(users, masking_ni), torch.mul(neg_items, masking_ni)), dim=1)
+        #--------------------#
+        # todo : regularizer for masked embedding? or non-masked(now) embedding?
         regularizer = 1./2*(users**2).sum() + 1./2*(pos_items**2).sum() + 1./2*(neg_items**2).sum()
         regularizer = regularizer / self.batch_size
 
@@ -572,7 +590,7 @@ class Model_Wrapper(object):
             loss += torch.sum(parameter ** 2)
         return loss / 2
     
-    
+
 def load_pretrained_data():
     pretrain_path = '%spretrain/%s/%s.npz' % (args.proj_path, args.dataset, 'embedding')
     try:

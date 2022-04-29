@@ -118,8 +118,11 @@ class UCR(nn.Module):
                 
         local_user_embd = torch.sum(torch.stack(self.local_user_embeddings, dim=2),dim=2)
         local_item_embd = torch.sum(torch.stack(self.local_item_embeddings, dim=2),dim=2)
-        return user_embd, item_embd, local_user_embd, local_item_embd
-        
+        final_u = torch.cat((user_embd, local_user_embd), dim = 1)
+        final_i = torch.cat((item_embd, local_item_embd), dim = 1)
+        #---concat global and local embedding, but this is not final embedding exactly
+        return final_u, final_i 
+        # return user_embd, item_embd, local_user_embd, local_item_embd        
     
         # Ver 1
         # with torch.no_grad():
