@@ -618,7 +618,7 @@ if __name__ == '__main__':
 #     plain_adj, norm_adj, mean_adj = data_generator.get_adj_mat()  ## original     
 
     if args.scc == 2:
-        norm_adj_list, incd_mat_list, idx_list = data_generator.get_adj_mat(scc=args.scc, N=args.N)
+        norm_adj_list, incd_mat_list, idx_list = data_generator.get_adj_mat(scc=args.scc, N=args.N, coclust = args.coclust)
     elif args.scc == 1 : 
         norm_adj = data_generator.get_adj_mat(scc=args.scc, N=args.N, cl_num = args.cl_num)
     else : 

@@ -85,4 +85,6 @@ def parse_args():
                         help='Scale')
     parser.add_argument('--wandb', type=bool, default=False,
                         help='wandb record')
+    parser.add_argument('--coclust', type=str, default='scc',
+                        help='coclustering methods')
     return parser.parse_args()
