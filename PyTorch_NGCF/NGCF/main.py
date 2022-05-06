@@ -271,8 +271,10 @@ class Model_Wrapper(object):
 
                     else : 
                         ua_embeddings, ia_embeddings = self.model(self.norm_adj)
-                        batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
-                                                                                  neg_i_g_embeddings)
+                        u_g_embeddings = ua_embeddings[users]
+                        pos_i_g_embeddings = ia_embeddings[pos_items]
+                        neg_i_g_embeddings = ia_embeddings[neg_items]
+                        batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss_origin(u_g_embeddings, pos_i_g_embeddings, neg_i_g_embeddings)
                     
 
                     batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss + batch_cor_loss
@@ -421,19 +423,19 @@ class Model_Wrapper(object):
         f2.close()
 
 
-    # def bpr_loss(self, users, pos_items, neg_items): # old version
-    #     pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
-    #     neg_scores = torch.sum(torch.mul(users, neg_items), dim=1)
+    def bpr_loss_origin(self, users, pos_items, neg_items): # old version
+        pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
+        neg_scores = torch.sum(torch.mul(users, neg_items), dim=1)
 
-    #     regularizer = 1./2*(users**2).sum() + 1./2*(pos_items**2).sum() + 1./2*(neg_items**2).sum()
-    #     regularizer = regularizer / self.batch_size
+        regularizer = 1./2*(users**2).sum() + 1./2*(pos_items**2).sum() + 1./2*(neg_items**2).sum()
+        regularizer = regularizer / self.batch_size
 
-    #     maxi = F.logsigmoid(pos_scores - neg_scores)
-    #     mf_loss = -torch.mean(maxi)
+        maxi = F.logsigmoid(pos_scores - neg_scores)
+        mf_loss = -torch.mean(maxi)
 
-    #     emb_loss = self.decay * regularizer
-    #     reg_loss = 0.0
-    #     return mf_loss, emb_loss, reg_loss
+        emb_loss = self.decay * regularizer
+        reg_loss = 0.0
+        return mf_loss, emb_loss, reg_loss
     def bpr_loss(self, users, pos_items, neg_items, check_u_pi, check_u_ni): # 0429 version, todo : without gradient for some tensors
         '''
         new bpr loss, check whether in-cluster or out-cluster

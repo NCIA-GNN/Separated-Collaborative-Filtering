@@ -30,6 +30,10 @@ class UCR(nn.Module):
         self.local_item_embeddings = []
         self.attention_1 = nn.ModuleList()        
         self.attention_2 = nn.ModuleList()
+        self.attention_1_u = nn.ModuleList()        
+        self.attention_2_u = nn.ModuleList()
+        self.attention_1_i = nn.ModuleList()        
+        self.attention_2_i = nn.ModuleList()
         
         for i in range(self.num_model):
             n_users,n_items = self.incd_mat_list[i].shape[0], self.incd_mat_list[i].shape[1]
@@ -74,11 +78,18 @@ class UCR(nn.Module):
                     self.local_item_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
                 local_user = self.incd_mat_list[i].shape[0]
                 local_item = self.incd_mat_list[i].shape[1]
+                self.attention_1_u.append(nn.Linear(self.final_weight_dim*2 , 1024))
+                self.attention_2_u.append(nn.Linear(1024 , 1))
+                self.attention_1_i.append(nn.Linear(self.final_weight_dim*2 , 1024))
+                self.attention_2_i.append(nn.Linear(1024 , 1))
                 self.attention_1.append(nn.Linear(self.final_weight_dim*2 , 1024))
                 self.attention_2.append(nn.Linear(1024 , 1))
         self.W_ratio_u = nn.Embedding(self.incd_mat_list[0].shape[0], self.final_weight_dim)
         self.W_ratio_i = nn.Embedding(self.incd_mat_list[0].shape[1], self.final_weight_dim)
-        
+        dim = 64
+        if self.alg_type in ['ngcf']:
+            dim = 256
+        self.local_extractor = nn.Linear(dim, 64)
         
         
         
@@ -95,33 +106,40 @@ class UCR(nn.Module):
         
         user_embed_list = []
         item_embed_list = []
-        for i in range(self.num_model):
+        for i in range(1,self.num_model):
+            
             u_g_embeddings, i_g_embeddings = self.model_list[i](s_norm_adj_list[i])
             user_embed_list.append(u_g_embeddings)
             item_embed_list.append(i_g_embeddings)
          # full graph
-        user_embd = user_embed_list[0]
-        item_embd = item_embed_list[0]
+#         user_embd = user_embed_list[0]
+#         item_embd = item_embed_list[0]
 
 
         # Ver 2
-        for i in range(1,self.num_model):
-            linear_u = self.attention_1[i-1]( torch.cat([user_embed_list[i], user_embd[self.idx_list[0][i-1]]],dim=1))
-            alpha_u = F.sigmoid(self.attention_2[i-1](F.sigmoid(linear_u)))
+#         for i in range(1,self.num_model):
+        for i in range(0,self.num_model-1):
+#             linear_u = self.attention_1[i-1]( torch.cat([user_embed_list[i], user_embd[self.idx_list[0][i-1]]],dim=1))
+#             alpha_u = self.attention_2[i-1](F.relu(linear_u))
             
-            linear_l = self.attention_1[i-1]( torch.cat([item_embed_list[i], item_embd[self.idx_list[1][i-1]]],dim=1))
-            alpha_l = F.sigmoid(self.attention_2[i-1](F.sigmoid(linear_l)))
-            
+#             linear_l = self.attention_1[i-1]( torch.cat([item_embed_list[i], item_embd[self.idx_list[1][i-1]]],dim=1))
+#             alpha_l = self.attention_2[i-1](F.relu(linear_l))
+
+#             with torch.no_grad():
+#                 self.local_user_embeddings[i][self.idx_list[0][i]]=alpha_u * user_embed_list[i]
+#                 self.local_item_embeddings[i][self.idx_list[1][i]]=alpha_l * item_embed_list[i]
             with torch.no_grad():
-                self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=alpha_u * user_embed_list[i]
-                self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=alpha_l * item_embed_list[i]
+                self.local_user_embeddings[i][self.idx_list[0][i]]= user_embed_list[i]
+                self.local_item_embeddings[i][self.idx_list[1][i]]= item_embed_list[i]
                 
         local_user_embd = torch.sum(torch.stack(self.local_user_embeddings, dim=2),dim=2)
         local_item_embd = torch.sum(torch.stack(self.local_item_embeddings, dim=2),dim=2)
-        final_u = torch.cat((user_embd, local_user_embd), dim = 1)
-        final_i = torch.cat((item_embd, local_item_embd), dim = 1)
+        local_total = self.local_extractor(torch.cat((local_user_embd, local_item_embd), dim=0)) # 64 -> 64
+        user_embd, item_embd  = self.model_list[0](s_norm_adj_list[0], local_total)
+#         final_u = torch.cat((user_embd, local_user_embd), dim = 1)
+#         final_i = torch.cat((item_embd, local_item_embd), dim = 1)
         #---concat global and local embedding, but this is not final embedding exactly
-        return final_u, final_i 
+#         return final_u, final_i 
         # return user_embd, item_embd, local_user_embd, local_item_embd        
     
         # Ver 1
@@ -130,9 +148,9 @@ class UCR(nn.Module):
         #         self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
         #         self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
     
-        # final_u = user_embd + torch.mul(self.W_ratio_u.weight , local_user_embd)
-        # final_i = item_embd + torch.mul(self.W_ratio_i.weight , local_item_embd)
-        # return final_u, final_i
+        final_u = user_embd + torch.mul(self.W_ratio_u.weight , local_user_embd)
+        final_i = item_embd + torch.mul(self.W_ratio_i.weight , local_item_embd)
+        return final_u, final_i
         
   
     
@@ -163,8 +181,14 @@ class NGCF(nn.Module):
         nn.init.xavier_uniform_(self.user_embedding.weight)
         nn.init.xavier_uniform_(self.item_embedding.weight)
 
-    def forward(self, adj):
+    def forward(self, adj, local_embedding=None):
+        
         ego_embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        if local_embedding is not None:
+#             print("check")
+            ego_embeddings = ego_embeddings + local_embedding
+        else : 
+            pass
         all_embeddings = [ego_embeddings]
         
         for i in range(self.n_layers):
@@ -206,10 +230,12 @@ class LightGCN(nn.Module):
         nn.init.xavier_uniform_(self.user_embedding.weight)
         nn.init.xavier_uniform_(self.item_embedding.weight)
 
-    def forward(self, adj):
+    def forward(self, adj,local_embedding=None):
         all_emb = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        if local_embedding is not None:
+            all_emb = all_emb + local_embedding
         layer_embeddings  = [all_emb]
-
+        
         for i in range(self.n_layers):
             all_emb = torch.sparse.mm(adj, all_emb)
             layer_embeddings.append(all_emb)
