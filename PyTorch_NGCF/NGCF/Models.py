@@ -78,82 +78,46 @@ class UCR(nn.Module):
                     self.local_item_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
                 local_user = self.incd_mat_list[i].shape[0]
                 local_item = self.incd_mat_list[i].shape[1]
-                self.attention_1_u.append(nn.Linear(self.final_weight_dim*2 , 1024))
-                self.attention_2_u.append(nn.Linear(1024 , 1))
-                self.attention_1_i.append(nn.Linear(self.final_weight_dim*2 , 1024))
-                self.attention_2_i.append(nn.Linear(1024 , 1))
+
                 self.attention_1.append(nn.Linear(self.final_weight_dim*2 , 1024))
                 self.attention_2.append(nn.Linear(1024 , 1))
-        self.W_ratio_u = nn.Embedding(self.incd_mat_list[0].shape[0], self.final_weight_dim)
-        self.W_ratio_i = nn.Embedding(self.incd_mat_list[0].shape[1], self.final_weight_dim)
-        dim = 64
-        if self.alg_type in ['ngcf']:
-            dim = 256
-        self.local_extractor = nn.Linear(dim, 64)
-        
-        
-        
-        
-        self._init_weight_()
-    def _init_weight_(self):
-        nn.init.xavier_uniform_(self.W_ratio_u.weight)
-        nn.init.xavier_uniform_(self.W_ratio_i.weight)
-        
-    def get_device(self):
-        return self.W_ratio_u.weight.device
 
     def forward(self, s_norm_adj_list):
         
         user_embed_list = []
         item_embed_list = []
-        for i in range(1,self.num_model):
+        for i in range(0,self.num_model):
             
             u_g_embeddings, i_g_embeddings = self.model_list[i](s_norm_adj_list[i])
             user_embed_list.append(u_g_embeddings)
             item_embed_list.append(i_g_embeddings)
          # full graph
-#         user_embd = user_embed_list[0]
-#         item_embd = item_embed_list[0]
+        user_embd = user_embed_list[0]
+        item_embd = item_embed_list[0]
 
 
         # Ver 2
-#         for i in range(1,self.num_model):
-        for i in range(0,self.num_model-1):
-#             linear_u = self.attention_1[i-1]( torch.cat([user_embed_list[i], user_embd[self.idx_list[0][i-1]]],dim=1))
-#             alpha_u = self.attention_2[i-1](F.relu(linear_u))
-            
-#             linear_l = self.attention_1[i-1]( torch.cat([item_embed_list[i], item_embd[self.idx_list[1][i-1]]],dim=1))
-#             alpha_l = self.attention_2[i-1](F.relu(linear_l))
+        for i in range(1,self.num_model):
 
-#             with torch.no_grad():
-#                 self.local_user_embeddings[i][self.idx_list[0][i]]=alpha_u * user_embed_list[i]
-#                 self.local_item_embeddings[i][self.idx_list[1][i]]=alpha_l * item_embed_list[i]
+            linear_u = self.attention_1[i-1]( torch.cat([user_embed_list[i], user_embd[self.idx_list[0][i-1]]],dim=1))
+            alpha_u = self.attention_2[i-1](F.relu(linear_u))
+            
+            linear_l = self.attention_1[i-1]( torch.cat([item_embed_list[i], item_embd[self.idx_list[1][i-1]]],dim=1))
+            alpha_l = self.attention_2[i-1](F.relu(linear_l))
+
             with torch.no_grad():
-                self.local_user_embeddings[i][self.idx_list[0][i]]= user_embed_list[i]
-                self.local_item_embeddings[i][self.idx_list[1][i]]= item_embed_list[i]
+                self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=alpha_u * user_embed_list[i]
+                self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=alpha_l * item_embed_list[i]
                 
         local_user_embd = torch.sum(torch.stack(self.local_user_embeddings, dim=2),dim=2)
         local_item_embd = torch.sum(torch.stack(self.local_item_embeddings, dim=2),dim=2)
-        local_total = self.local_extractor(torch.cat((local_user_embd, local_item_embd), dim=0)) # 64 -> 64
-        user_embd, item_embd  = self.model_list[0](s_norm_adj_list[0], local_total)
-#         final_u = torch.cat((user_embd, local_user_embd), dim = 1)
-#         final_i = torch.cat((item_embd, local_item_embd), dim = 1)
+        final_u = torch.cat((user_embd, local_user_embd), dim = 1)
+        final_i = torch.cat((item_embd, local_item_embd), dim = 1)
         #---concat global and local embedding, but this is not final embedding exactly
-#         return final_u, final_i 
-        # return user_embd, item_embd, local_user_embd, local_item_embd        
-    
-        # Ver 1
-        # with torch.no_grad():
-        #     for i in range(1,self.num_model):
-        #         self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
-        #         self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
-    
-        final_u = user_embd + torch.mul(self.W_ratio_u.weight , local_user_embd)
-        final_i = item_embd + torch.mul(self.W_ratio_i.weight , local_item_embd)
-        return final_u, final_i
+        return final_u, final_i 
         
-  
-    
+        
+
 class NGCF(nn.Module):
     def __init__(self, n_users, n_items, embedding_dim, weight_size, dropout_list):
         super().__init__()

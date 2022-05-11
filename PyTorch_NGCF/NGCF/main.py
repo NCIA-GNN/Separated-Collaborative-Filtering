@@ -260,8 +260,8 @@ class Model_Wrapper(object):
                         u_g_embeddings = ua_embeddings[users]
                         pos_i_g_embeddings = ia_embeddings[pos_items]
                         neg_i_g_embeddings = ia_embeddings[neg_items]
-                        # batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
-                        #                                                               neg_i_g_embeddings)
+#                         batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss_origin(u_g_embeddings, pos_i_g_embeddings,
+#                                                                                       neg_i_g_embeddings)
                         #--------------------------#
                         clu_users, clu_pos_items, clu_neg_items = self.map_idx2clu(users=users, pos_items=pos_items, neg_items=neg_items)
                         check_u_pi = torch.tensor((clu_users == clu_pos_items).astype('int')).float().squeeze().cuda() # todo : without gradient

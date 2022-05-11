@@ -152,9 +152,9 @@ class Data(object):
                     adj_mat_list.append(clustered_adj_mat_list[i])
                     incd_matrix_list.append(clustered_incd_matrix_list[i])
                 df = pd.DataFrame(idx_list)
-                df.to_csv(self.path +f"/index_list_{N}_cluster.csv",index=False)
+                df.to_csv(self.path +f"/index_list_{self.coclust}_{N}_cluster.csv",index=False)
                 print("All matrices are saved!!")
-            df = pd.read_csv(self.path +f'/index_list_{N}_cluster.csv')
+            df = pd.read_csv(self.path +f'/index_list_{self.coclust}_{N}_cluster.csv')
             u_idx_list = []
             i_idx_list = []
             for i in range(N):
