@@ -115,8 +115,12 @@ class Model_Wrapper(object):
                 self.model = UltraGCN(self.n_users, self.n_items, data_config, args, data_config['incd_mat'], 0,0)
                 self.lr = self.model.lr
                 self.batch_size = self.model.batch_size
-            elif self.alg_type in ['gcmc','gcmc']:
+            elif self.alg_type in ['gcmc','GCMC']:
                  self.model = GCMC(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['scf','SCF']:
+                 self.model = SCF(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['cgmc','CGMC']:
+                 self.model = CGMC(self.n_users, self.n_items, self.emb_dim)
             else:
                 raise Exception('Dont know which model to train')
             

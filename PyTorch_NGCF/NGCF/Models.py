@@ -74,6 +74,12 @@ class UCR(nn.Module):
             elif self.alg_type in ['gcmc','GCMC']:
                 self.model_list.append(GCMC(n_users, n_items, self.embedding_dim))
                 self.final_weight_dim = self.embedding_dim*2
+            elif self.alg_type in ['scf','SCF']:
+                self.model_list.append(SCF(n_users, n_items, self.embedding_dim))
+                self.final_weight_dim = self.embedding_dim*2
+            elif self.alg_type in ['cgmc','CGMC']:
+                self.model_list.append(CGMC(n_users, n_items, self.embedding_dim))
+                self.final_weight_dim = self.embedding_dim*2
                 
             if i>=1:             
                 with torch.no_grad():
@@ -211,7 +217,73 @@ class GCMC(nn.Module):
         
         return users, items       
     
+     
+class SCF(nn.Module):
+    def __init__(self, n_users, n_items, emb_dim):
+        super().__init__()
+        self.n_users = n_users
+        self.n_items = n_items
+        self.emb_dim = emb_dim        
+        self.user_embedding = nn.Embedding(n_users, emb_dim)
+        self.item_embedding = nn.Embedding(n_items, emb_dim)
+        self.filter = nn.Embedding(emb_dim, emb_dim)
+        # SCF : LAYER 1 LR 0.0001 
 
+        self._init_weight_()
+        
+    def _init_weight_(self):
+        nn.init.xavier_uniform_(self.user_embedding.weight)
+        nn.init.xavier_uniform_(self.item_embedding.weight)
+        nn.init.eye_(self.filter.weight)
+
+    def forward(self, adj):
+        embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        all_emb = [embeddings]
+        embeddings = 2 * embeddings -  torch.sparse.mm(adj, embeddings)
+
+        embeddings = F.sigmoid(torch.matmul(embeddings, self.filter.weight))
+        all_emb += [embeddings]
+        
+        all_emb = torch.cat(all_emb, dim=1)
+    
+        users, items = torch.split(all_emb, [self.n_users, self.n_items])
+        
+        return users, items      
+    
+class CGMC(nn.Module):
+    def __init__(self, n_users, n_items, emb_dim):
+        super().__init__()
+        self.n_users = n_users
+        self.n_items = n_items
+        self.emb_dim = emb_dim        
+        self.user_embedding = nn.Embedding(n_users, emb_dim)
+        self.item_embedding = nn.Embedding(n_items, emb_dim)
+        self.filter = nn.Embedding(emb_dim, emb_dim)
+        # SCF : LAYER 1 LR 0.0001 
+
+        self._init_weight_()
+        
+    def _init_weight_(self):
+        nn.init.xavier_uniform_(self.user_embedding.weight)
+        nn.init.xavier_uniform_(self.item_embedding.weight)
+        nn.init.eye_(self.filter.weight)
+
+    def forward(self, adj):
+        embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        all_emb = [embeddings]
+        embeddings = (1-0.2) *  torch.sparse.mm(adj, embeddings) + 0.2*embeddings
+
+        embeddings = F.sigmoid(torch.matmul(embeddings, self.filter.weight))
+        all_emb += [embeddings]
+        
+        all_emb = torch.cat(all_emb, dim=1)
+    
+        users, items = torch.split(all_emb, [self.n_users, self.n_items])
+        
+        return users, items      
+    
+    
+    
 class LightGCN(nn.Module):
     def __init__(self, n_users, n_items, embedding_dim, weight_size, dropout_list):
         super().__init__()
