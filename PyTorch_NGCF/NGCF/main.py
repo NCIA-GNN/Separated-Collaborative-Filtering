@@ -115,7 +115,8 @@ class Model_Wrapper(object):
                 self.model = UltraGCN(self.n_users, self.n_items, data_config, args, data_config['incd_mat'], 0,0)
                 self.lr = self.model.lr
                 self.batch_size = self.model.batch_size
-                
+            elif self.alg_type in ['gcmc','gcmc']:
+                 self.model = GCMC(self.n_users, self.n_items, self.emb_dim)
             else:
                 raise Exception('Dont know which model to train')
             
@@ -356,7 +357,7 @@ class Model_Wrapper(object):
                               })
             cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
                                                                         stopping_step, expected_order='acc',
-                                                                        flag_step=10)
+                                                                        flag_step=20)
 
             # *********************************************************
             # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
