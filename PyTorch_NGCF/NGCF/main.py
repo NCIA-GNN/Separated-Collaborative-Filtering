@@ -115,7 +115,14 @@ class Model_Wrapper(object):
                 self.model = UltraGCN(self.n_users, self.n_items, data_config, args, data_config['incd_mat'], 0,0)
                 self.lr = self.model.lr
                 self.batch_size = self.model.batch_size
-                
+            elif self.alg_type in ['gcmc','GCMC']:
+                 self.model = GCMC(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['scf','SCF']:
+                 self.model = SCF(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['cgmc','CGMC']:
+                 self.model = CGMC(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['sgnn','SGNN']:
+                 self.model = SGNN(self.n_users, self.n_items, self.emb_dim)
             else:
                 raise Exception('Dont know which model to train')
             
@@ -182,7 +189,7 @@ class Model_Wrapper(object):
                 args.cl_num=0
                 
             self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(self.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
-            run=wandb.init(project=self.wandb_proj_name+'_paper',entity='ncia-gnn',name=self.name)
+            run=wandb.init(project=self.wandb_proj_name+'_final',entity='ncia-gnn',name=self.name)
 
             wandb.config.update = {                
                    'embed_size':args.embed_size,
@@ -356,7 +363,7 @@ class Model_Wrapper(object):
                               })
             cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
                                                                         stopping_step, expected_order='acc',
-                                                                        flag_step=10)
+                                                                        flag_step=20)
 
             # *********************************************************
             # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
