@@ -115,7 +115,14 @@ class Model_Wrapper(object):
                 self.model = UltraGCN(self.n_users, self.n_items, data_config, args, data_config['incd_mat'], 0,0)
                 self.lr = self.model.lr
                 self.batch_size = self.model.batch_size
-                
+            elif self.alg_type in ['gcmc','GCMC']:
+                 self.model = GCMC(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['scf','SCF']:
+                 self.model = SCF(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['cgmc','CGMC']:
+                 self.model = CGMC(self.n_users, self.n_items, self.emb_dim)
+            elif self.alg_type in ['sgnn','SGNN']:
+                 self.model = SGNN(self.n_users, self.n_items, self.emb_dim)
             else:
                 raise Exception('Dont know which model to train')
             
@@ -182,7 +189,7 @@ class Model_Wrapper(object):
                 args.cl_num=0
                 
             self.name = '_'.join([str(args.alg_type), str(args.embed_size), str(self.batch_size), str(args.regs), 'lr'+str(args.lr), 'scc'+str(args.scc), 'k'+str(args.N), 'n'+str(args.cl_num)])
-            run=wandb.init(project=self.wandb_proj_name+'_paper',entity='ncia-gnn',name=self.name)
+            run=wandb.init(project=self.wandb_proj_name+'_final',entity='ncia-gnn',name=self.name)
 
             wandb.config.update = {                
                    'embed_size':args.embed_size,
@@ -260,8 +267,8 @@ class Model_Wrapper(object):
                         u_g_embeddings = ua_embeddings[users]
                         pos_i_g_embeddings = ia_embeddings[pos_items]
                         neg_i_g_embeddings = ia_embeddings[neg_items]
-                        # batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
-                        #                                                               neg_i_g_embeddings)
+#                         batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss_origin(u_g_embeddings, pos_i_g_embeddings,
+#                                                                                       neg_i_g_embeddings)
                         #--------------------------#
                         clu_users, clu_pos_items, clu_neg_items = self.map_idx2clu(users=users, pos_items=pos_items, neg_items=neg_items)
                         check_u_pi = torch.tensor((clu_users == clu_pos_items).astype('int')).float().squeeze().cuda() # todo : without gradient
@@ -271,8 +278,10 @@ class Model_Wrapper(object):
 
                     else : 
                         ua_embeddings, ia_embeddings = self.model(self.norm_adj)
-                        batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss(u_g_embeddings, pos_i_g_embeddings,
-                                                                                  neg_i_g_embeddings)
+                        u_g_embeddings = ua_embeddings[users]
+                        pos_i_g_embeddings = ia_embeddings[pos_items]
+                        neg_i_g_embeddings = ia_embeddings[neg_items]
+                        batch_mf_loss, batch_emb_loss, batch_reg_loss = self.bpr_loss_origin(u_g_embeddings, pos_i_g_embeddings, neg_i_g_embeddings)
                     
 
                     batch_loss = batch_mf_loss + batch_emb_loss + batch_reg_loss + batch_cor_loss
@@ -354,7 +363,7 @@ class Model_Wrapper(object):
                               })
             cur_best_pre_0, stopping_step, should_stop = early_stopping(ret['recall'][0], cur_best_pre_0,
                                                                         stopping_step, expected_order='acc',
-                                                                        flag_step=10)
+                                                                        flag_step=20)
 
             # *********************************************************
             # early stopping when cur_best_pre_0 is decreasing for ten successive steps.
@@ -421,19 +430,19 @@ class Model_Wrapper(object):
         f2.close()
 
 
-    # def bpr_loss(self, users, pos_items, neg_items): # old version
-    #     pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
-    #     neg_scores = torch.sum(torch.mul(users, neg_items), dim=1)
+    def bpr_loss_origin(self, users, pos_items, neg_items): # old version
+        pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
+        neg_scores = torch.sum(torch.mul(users, neg_items), dim=1)
 
-    #     regularizer = 1./2*(users**2).sum() + 1./2*(pos_items**2).sum() + 1./2*(neg_items**2).sum()
-    #     regularizer = regularizer / self.batch_size
+        regularizer = 1./2*(users**2).sum() + 1./2*(pos_items**2).sum() + 1./2*(neg_items**2).sum()
+        regularizer = regularizer / self.batch_size
 
-    #     maxi = F.logsigmoid(pos_scores - neg_scores)
-    #     mf_loss = -torch.mean(maxi)
+        maxi = F.logsigmoid(pos_scores - neg_scores)
+        mf_loss = -torch.mean(maxi)
 
-    #     emb_loss = self.decay * regularizer
-    #     reg_loss = 0.0
-    #     return mf_loss, emb_loss, reg_loss
+        emb_loss = self.decay * regularizer
+        reg_loss = 0.0
+        return mf_loss, emb_loss, reg_loss
     def bpr_loss(self, users, pos_items, neg_items, check_u_pi, check_u_ni): # 0429 version, todo : without gradient for some tensors
         '''
         new bpr loss, check whether in-cluster or out-cluster
@@ -616,7 +625,7 @@ if __name__ == '__main__':
 #     plain_adj, norm_adj, mean_adj = data_generator.get_adj_mat()  ## original     
 
     if args.scc == 2:
-        norm_adj_list, incd_mat_list, idx_list = data_generator.get_adj_mat(scc=args.scc, N=args.N)
+        norm_adj_list, incd_mat_list, idx_list = data_generator.get_adj_mat(scc=args.scc, N=args.N, coclust = args.coclust)
     elif args.scc == 1 : 
         norm_adj = data_generator.get_adj_mat(scc=args.scc, N=args.N, cl_num = args.cl_num)
     else : 

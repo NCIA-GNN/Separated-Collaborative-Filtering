@@ -15,6 +15,9 @@ import pandas as pd
 import os
 import torch
 import torch.utils.data as data     # updated 0406
+from coclust.coclustering import CoclustInfo
+from coclust.coclustering import CoclustMod
+from coclust.coclustering  import CoclustSpecMod
 warnings.filterwarnings('ignore')
 
 class Data(object):
@@ -89,8 +92,10 @@ class Data(object):
                     uid, test_items = items[0], items[1:]
                     self.test_set[uid] = test_items
 
-    def get_adj_mat(self, scc=0,N=5, cl_num=0):
+    def get_adj_mat(self, scc=0,N=5, cl_num=0, coclust='scc'):
         t1 = time()
+        self.coclust = coclust
+        
         incd_path = self.path + '/s_incd_mat.npz'
         adj_path = self.path + '/s_adj_mat.npz'
         norm_adj_path = self.path + '/s_norm_adj_mat.npz'
@@ -131,8 +136,8 @@ class Data(object):
             try : 
                 print(f"Load {N} Cluster matrices.....")
                 for i in range(N):
-                    norm_adj_mat = sp.load_npz(self.path + f'/s_adj_mat_{i}_of_{N}.npz')
-                    norm_incd_mat = sp.load_npz(self.path + f'/s_incd_mat_{i}_of_{N}.npz')
+                    norm_adj_mat = sp.load_npz(self.path + f'/s_adj_mat_{self.coclust}_{i}_of_{N}.npz')
+                    norm_incd_mat = sp.load_npz(self.path + f'/s_incd_mat_{self.coclust}_{i}_of_{N}.npz')
                     adj_mat_list.append(norm_adj_mat)
                     incd_matrix_list.append(norm_incd_mat)
                 print(f"{N} Data loading completed!")
@@ -142,14 +147,14 @@ class Data(object):
                 clustered_adj_mat_list, clustered_incd_matrix_list, idx_list = self.co_clustering(incd_mat, N,scc)
                 # print(len(idx_list[0][0]))
                 for i in range(N):
-                    sp.save_npz(self.path +  f'/s_adj_mat_{i}_of_{N}.npz', clustered_adj_mat_list[i])
-                    sp.save_npz(self.path +  f'/s_incd_mat_{i}_of_{N}.npz', clustered_incd_matrix_list[i])
+                    sp.save_npz(self.path +  f'/s_adj_mat_{self.coclust}_{i}_of_{N}.npz', clustered_adj_mat_list[i])
+                    sp.save_npz(self.path +  f'/s_incd_mat_{self.coclust}_{i}_of_{N}.npz', clustered_incd_matrix_list[i])
                     adj_mat_list.append(clustered_adj_mat_list[i])
                     incd_matrix_list.append(clustered_incd_matrix_list[i])
                 df = pd.DataFrame(idx_list)
-                df.to_csv(self.path +f"/index_list_{N}_cluster.csv",index=False)
+                df.to_csv(self.path +f"/index_list_{self.coclust}_{N}_cluster.csv",index=False)
                 print("All matrices are saved!!")
-            df = pd.read_csv(self.path +f'/index_list_{N}_cluster.csv')
+            df = pd.read_csv(self.path +f'/index_list_{self.coclust}_{N}_cluster.csv')
             u_idx_list = []
             i_idx_list = []
             for i in range(N):
@@ -373,7 +378,20 @@ class Data(object):
         return split_uids, split_state
     def co_clustering(self, incd_mat, N, scc, cl_num=0):
         
-        bicl = SpectralCoclustering(n_clusters=N, random_state=0)
+        
+        if self.coclust in ['scc']:
+            print(f'{self.coclust} method!')
+            bicl = SpectralCoclustering(n_clusters=N, random_state=0)
+        elif self.coclust in ['info']:
+            print(f'{self.coclust} method!')
+            bicl = CoclustInfo(n_row_clusters=N, n_col_clusters=N)
+        elif self.coclust in ['mod']:
+            print(f'{self.coclust} method!')
+            bicl = CoclustMod(n_clusters=N)
+        elif self.coclust in ['spec']:
+            print(f'{self.coclust} method!')
+            bicl = CoclustSpecMod(n_clusters=N)
+            
         bicl.fit(incd_mat)
         self.print_statistics()
         print('Row (user) cluster counts:', np.unique(bicl.row_labels_, return_counts=True)[1])

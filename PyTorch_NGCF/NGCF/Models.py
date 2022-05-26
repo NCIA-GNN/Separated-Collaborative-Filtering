@@ -30,6 +30,10 @@ class UCR(nn.Module):
         self.local_item_embeddings = []
         self.attention_1 = nn.ModuleList()        
         self.attention_2 = nn.ModuleList()
+        self.attention_1_u = nn.ModuleList()        
+        self.attention_2_u = nn.ModuleList()
+        self.attention_1_i = nn.ModuleList()        
+        self.attention_2_i = nn.ModuleList()
         
         for i in range(self.num_model):
             n_users,n_items = self.incd_mat_list[i].shape[0], self.incd_mat_list[i].shape[1]
@@ -67,35 +71,35 @@ class UCR(nn.Module):
                 self.ii_constraint_mat= self.model_list[0].ii_constraint_mat
                 self.ii_neighbor_mat= self.model_list[0].ii_neighbor_mat
                 # self.embedding_dim = ultra_config['embedding_dim']
-            
+            elif self.alg_type in ['gcmc','GCMC']:
+                self.model_list.append(GCMC(n_users, n_items, self.embedding_dim))
+                self.final_weight_dim = self.embedding_dim*4
+            elif self.alg_type in ['scf','SCF']:
+                self.model_list.append(SCF(n_users, n_items, self.embedding_dim))
+                self.final_weight_dim = self.embedding_dim*4
+            elif self.alg_type in ['cgmc','CGMC']:
+                self.model_list.append(CGMC(n_users, n_items, self.embedding_dim))
+                self.final_weight_dim = self.embedding_dim*4
+            elif self.alg_type in ['sgnn','SGNN']:
+                self.model_list.append(SGNN(n_users, n_items, self.embedding_dim))
+                self.final_weight_dim = self.embedding_dim*4
+                
             if i>=1:             
                 with torch.no_grad():
                     self.local_user_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[0], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
                     self.local_item_embeddings.append(torch.zeros((self.incd_mat_list[0].shape[1], self.final_weight_dim),requires_grad = True,device='cuda').cuda())
                 local_user = self.incd_mat_list[i].shape[0]
                 local_item = self.incd_mat_list[i].shape[1]
+
                 self.attention_1.append(nn.Linear(self.final_weight_dim*2 , 1024))
                 self.attention_2.append(nn.Linear(1024 , 1))
-        self.W_ratio_u = nn.Embedding(self.incd_mat_list[0].shape[0], self.final_weight_dim)
-        self.W_ratio_i = nn.Embedding(self.incd_mat_list[0].shape[1], self.final_weight_dim)
-        
-        
-        
-        
-        
-        self._init_weight_()
-    def _init_weight_(self):
-        nn.init.xavier_uniform_(self.W_ratio_u.weight)
-        nn.init.xavier_uniform_(self.W_ratio_i.weight)
-        
-    def get_device(self):
-        return self.W_ratio_u.weight.device
 
     def forward(self, s_norm_adj_list):
         
         user_embed_list = []
         item_embed_list = []
-        for i in range(self.num_model):
+        for i in range(0,self.num_model):
+            
             u_g_embeddings, i_g_embeddings = self.model_list[i](s_norm_adj_list[i])
             user_embed_list.append(u_g_embeddings)
             item_embed_list.append(i_g_embeddings)
@@ -106,12 +110,13 @@ class UCR(nn.Module):
 
         # Ver 2
         for i in range(1,self.num_model):
+
             linear_u = self.attention_1[i-1]( torch.cat([user_embed_list[i], user_embd[self.idx_list[0][i-1]]],dim=1))
-            alpha_u = F.sigmoid(self.attention_2[i-1](F.sigmoid(linear_u)))
+            alpha_u = self.attention_2[i-1](F.relu(linear_u))
             
             linear_l = self.attention_1[i-1]( torch.cat([item_embed_list[i], item_embd[self.idx_list[1][i-1]]],dim=1))
-            alpha_l = F.sigmoid(self.attention_2[i-1](F.sigmoid(linear_l)))
-            
+            alpha_l = self.attention_2[i-1](F.relu(linear_l))
+
             with torch.no_grad():
                 self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=alpha_u * user_embed_list[i]
                 self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=alpha_l * item_embed_list[i]
@@ -122,20 +127,9 @@ class UCR(nn.Module):
         final_i = torch.cat((item_embd, local_item_embd), dim = 1)
         #---concat global and local embedding, but this is not final embedding exactly
         return final_u, final_i 
-        # return user_embd, item_embd, local_user_embd, local_item_embd        
-    
-        # Ver 1
-        # with torch.no_grad():
-        #     for i in range(1,self.num_model):
-        #         self.local_user_embeddings[i-1][self.idx_list[0][i-1]]=user_embed_list[i]
-        #         self.local_item_embeddings[i-1][self.idx_list[1][i-1]]=item_embed_list[i]
-    
-        # final_u = user_embd + torch.mul(self.W_ratio_u.weight , local_user_embd)
-        # final_i = item_embd + torch.mul(self.W_ratio_i.weight , local_item_embd)
-        # return final_u, final_i
         
-  
-    
+        
+
 class NGCF(nn.Module):
     def __init__(self, n_users, n_items, embedding_dim, weight_size, dropout_list):
         super().__init__()
@@ -164,6 +158,7 @@ class NGCF(nn.Module):
         nn.init.xavier_uniform_(self.item_embedding.weight)
 
     def forward(self, adj):
+        
         ego_embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
         all_embeddings = [ego_embeddings]
         
@@ -187,6 +182,158 @@ class NGCF(nn.Module):
         u_g_embeddings, i_g_embeddings = torch.split(all_embeddings, [self.n_users, self.n_items], dim=0)
         
         return u_g_embeddings, i_g_embeddings
+
+class SGNN(nn.Module):
+    def __init__(self,  n_users, n_items, emb_dim):
+        super().__init__()
+        self.n_users = n_users
+        self.n_items = n_items
+        self.embedding_dim = emb_dim
+        self.prop_dim = 128
+        self.n_layers = 3
+        self.user_embedding = nn.Embedding(n_users, emb_dim)
+        self.item_embedding = nn.Embedding(n_items, emb_dim)
+        self.user_prop = nn.Embedding(n_users, self.prop_dim) ## Assume SGNN_RM model
+        self.item_prop = nn.Embedding(n_items, self.prop_dim)
+        self.norm = 1/(self.n_users+self.n_items)
+        self._init_weight_()
+        self.layer_weight = [1 / (l + 1) ** 1 for l in range(self.n_layers + 1)]
+        
+    def _init_weight_(self):
+        nn.init.xavier_uniform_(self.user_embedding.weight)
+        nn.init.xavier_uniform_(self.item_embedding.weight)
+        nn.init.xavier_uniform_(self.user_prop.weight)
+        nn.init.xavier_uniform_(self.item_prop.weight)
+
+    def forward(self, adj):
+        
+        embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        propagation_rm = torch.cat((self.user_prop.weight, self.item_prop.weight),dim=0)
+        
+        all_embeddings = [embeddings]
+        
+        for i in range(self.n_layers):
+            embeddings = torch.matmul(torch.transpose(propagation_rm,1,0), embeddings)
+            embeddings = torch.matmul(propagation_rm,embeddings)
+            all_embeddings += [self.layer_weight[i + 1] * F.tanh(self.norm * embeddings)]
+            
+        all_embeddings = torch.cat(all_embeddings, dim=1)
+        
+        u_g_embeddings, i_g_embeddings = torch.split(all_embeddings, [self.n_users, self.n_items], dim=0)
+        
+        return u_g_embeddings, i_g_embeddings
+
+
+        
+class GCMC(nn.Module):
+    def __init__(self, n_users, n_items, emb_dim):
+        super().__init__()
+        self.n_users = n_users
+        self.n_items = n_items
+        self.emb_dim = emb_dim        
+        self.user_embedding = nn.Embedding(n_users, emb_dim)
+        self.item_embedding = nn.Embedding(n_items, emb_dim)
+        self.filters = nn.ModuleList() 
+        self.dropout_list = nn.ModuleList() 
+        for i in range(3):
+            self.filters.append(nn.Embedding(emb_dim, emb_dim))
+            self.dropout_list.append(nn.Dropout(0.3))
+        self._init_weight_()
+        
+    def _init_weight_(self):
+        nn.init.xavier_uniform_(self.user_embedding.weight)
+        nn.init.xavier_uniform_(self.item_embedding.weight)
+        for i in range(3):
+            nn.init.eye_(self.filters[i].weight)
+#         self.filter += torch.Tensor(np.random.normal(0, 0.001, (self.emb_dim, self.emb_dim)) + np.diag(np.random.normal(1, 0.001, self.emb_dim))).cuda()
+
+    def forward(self, adj):
+        embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        all_emb = [embeddings]
+        for i in range(3):
+            embeddings = torch.sparse.mm(adj, embeddings)
+            embeddings = F.relu(torch.matmul(embeddings, self.filters[i].weight))
+            embeddings = self.dropout_list[i](embeddings)
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+            all_emb += [embeddings]
+        all_emb = torch.sum(torch.stack(all_emb, dim=2),dim=2)
+   
+    
+        users, items = torch.split(all_emb, [self.n_users, self.n_items])
+        
+        return users, items       
+    
+     
+class SCF(nn.Module):
+    def __init__(self, n_users, n_items, emb_dim):
+        super().__init__()
+        self.n_users = n_users
+        self.n_items = n_items
+        self.emb_dim = emb_dim        
+        self.user_embedding = nn.Embedding(n_users, emb_dim)
+        self.item_embedding = nn.Embedding(n_items, emb_dim)
+        self.filter = nn.Embedding(emb_dim, emb_dim)
+        # SCF : LAYER 1 LR 0.0001 
+
+        self._init_weight_()
+        
+    def _init_weight_(self):
+        nn.init.xavier_uniform_(self.user_embedding.weight)
+        nn.init.xavier_uniform_(self.item_embedding.weight)
+        nn.init.eye_(self.filter.weight)
+
+    def forward(self, adj):
+        embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        all_emb = [embeddings]
+        
+        embeddings = 2 * embeddings -  torch.sparse.mm(adj, embeddings)
+
+        embeddings = F.sigmoid(torch.matmul(embeddings, self.filter.weight))
+        all_emb += [embeddings]
+
+        all_emb = torch.cat(all_emb, dim=1)
+    
+        users, items = torch.split(all_emb, [self.n_users, self.n_items])
+        
+        return users, items      
+    
+class CGMC(nn.Module):
+    def __init__(self, n_users, n_items, emb_dim):
+        super().__init__()
+        self.n_users = n_users
+        self.n_items = n_items
+        self.emb_dim = emb_dim        
+        self.user_embedding = nn.Embedding(n_users, emb_dim)
+        self.item_embedding = nn.Embedding(n_items, emb_dim)
+        self.filters = nn.ModuleList() 
+        for i in range(3):
+            self.filters.append(nn.Embedding(emb_dim, emb_dim))
+        # SCF : LAYER 1 LR 0.0001 
+
+        self._init_weight_()
+        
+    def _init_weight_(self):
+        nn.init.xavier_uniform_(self.user_embedding.weight)
+        nn.init.xavier_uniform_(self.item_embedding.weight)
+        for i in range(3):
+            nn.init.eye_(self.filters[i].weight)
+
+    def forward(self, adj):
+        embeddings = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        all_emb = [embeddings]
+        for i in range(3):
+            embeddings = (1-0.2) *  torch.sparse.mm(adj, embeddings) + 0.2*embeddings
+
+            embeddings = F.sigmoid(torch.matmul(embeddings, self.filters[i].weight))
+            all_emb += [embeddings]
+        
+        all_emb = torch.cat(all_emb, dim=1)
+    
+        users, items = torch.split(all_emb, [self.n_users, self.n_items])
+        
+        return users, items      
+    
+    
     
 class LightGCN(nn.Module):
     def __init__(self, n_users, n_items, embedding_dim, weight_size, dropout_list):
@@ -208,8 +355,9 @@ class LightGCN(nn.Module):
 
     def forward(self, adj):
         all_emb = torch.cat((self.user_embedding.weight, self.item_embedding.weight), dim=0)
+        
         layer_embeddings  = [all_emb]
-
+        
         for i in range(self.n_layers):
             all_emb = torch.sparse.mm(adj, all_emb)
             layer_embeddings.append(all_emb)
